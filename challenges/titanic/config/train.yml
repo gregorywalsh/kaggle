@@ -1,0 +1,80 @@
+pandas_csv_kwargs:
+  delimiter: ','
+  header: 0
+  na_values:
+    - ''
+  encoding: 'utf-8'
+  engine: 'c'
+
+column_defns:
+  - name: PassengerId
+    friendly_name: passenger_id
+    vartype: unique
+    group: meta
+    load: True
+
+  - name: Survived
+    friendly_name: survived
+    vartype: discrete
+    group: target
+    load: True
+
+  - name: Pclass
+    friendly_name: class
+    vartype: discrete
+    group: feature
+    load: True
+
+  - name: Name
+    friendly_name: name
+    vartype: string
+    group: feature
+    load: True
+
+  - name: Sex
+    friendly_name: sex
+    vartype: categorical
+    group: feature
+    load: True
+
+  - name: Age
+    friendly_name: age
+    vartype: continuous
+    group: feature
+    load: True
+
+  - name: SibSp
+    friendly_name: num_sib_spouses
+    vartype: discrete
+    group: feature
+    load: True
+
+  - name: Parch
+    friendly_name: num_parents_children
+    vartype: discrete
+    group: feature
+    load: True
+
+  - name: Ticket
+    friendly_name: ticket_id
+    vartype: string
+    group: feature
+    load: True
+
+  - name: Fare
+    friendly_name: fare
+    vartype: continuous
+    group: feature
+    load: True
+
+  - name: Cabin
+    friendly_name: cabin_id
+    vartype: string
+    group: feature
+    load: True
+
+  - name: Embarked
+    friendly_name: port_embarked
+    vartype: categorical
+    group: feature
+    load: True
