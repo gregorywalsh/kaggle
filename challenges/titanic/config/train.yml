@@ -15,13 +15,13 @@ column_defns:
 
   - name: Survived
     friendly_name: survived
-    vartype: discrete
+    vartype: numerical
     group: target
     load: True
 
   - name: Pclass
     friendly_name: class
-    vartype: discrete
+    vartype: ordinal
     group: feature
     load: True
 
@@ -33,25 +33,25 @@ column_defns:
 
   - name: Sex
     friendly_name: sex
-    vartype: categorical
+    vartype: boolean
     group: feature
     load: True
 
   - name: Age
     friendly_name: age
-    vartype: continuous
+    vartype: numerical
     group: feature
     load: True
 
   - name: SibSp
     friendly_name: num_sib_spouses
-    vartype: discrete
+    vartype: numerical
     group: feature
     load: True
 
   - name: Parch
     friendly_name: num_parents_children
-    vartype: discrete
+    vartype: numerical
     group: feature
     load: True
 
@@ -63,7 +63,7 @@ column_defns:
 
   - name: Fare
     friendly_name: fare
-    vartype: continuous
+    vartype: numerical
     group: feature
     load: True
 

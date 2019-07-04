@@ -9,8 +9,7 @@ PANDAS_DTYPE_MAP = {
     'date': 'datetime64',
     'boolean': 'category',
     'categorical': 'category',
-    'continuous': 'float32',
-    'discrete': 'float32',
+    'numerical': 'float32',
     'ordinal': 'float32'
 }
 
@@ -27,8 +26,8 @@ class ColumnDefn:
         self.load = load
 
     def __repr__(self):
-        return '{c}(name={n}, new_name:{m}, vartype:{v}, group={g}, dtype={d}), use={u}'.format(
-            c=self.__class__.__name__, n=self.name, m=self.new_name, v=self.vartype, g=self.group, d=self.dtype, u=self.load
+        return '{c}(name={n}, new_name:{m}, vartype:{v}, group={g}, dtype={d}), loaded={l}'.format(
+            c=self.__class__.__name__, n=self.name, m=self.new_name, v=self.vartype, g=self.group, d=self.dtype, l=self.load
         )
 
 

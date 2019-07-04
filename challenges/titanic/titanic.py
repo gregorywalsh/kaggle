@@ -1,34 +1,46 @@
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import FunctionTransformer
+import numpy as np
+
 from hypothesis import RandomForrestClassifierHypothesis
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
+from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import StratifiedKFold
 
 
-def initial_data_munge():
-    pass
+def initial_data_munge(df):
+    return df[['sex|boolean', 'port_embarked|categorical']]
 
 
 def get_hypotheses(train_features, test_features):
 
+    def get_cat_ids(df):
+        def cat_codes(s):
+            return s.cat.codes
+        return df.apply(cat_codes)
+
     # SKLEARN RANDOM FOREST CLASSIFIER
-
-    def cv_transformer():
-        get_embedding = RandomForrestClassifierHypothesis.get_categorical_embedding_pipeline
-        categorical_embedding_transforms = {
-            col: get_embedding(test_feature=train_features[col], train_feature=test_features[col])
-            for col in train_features.columns if col.split('|')[1] == 'categorical'
-        }
-        transformer = Pipeline(
-            steps=[
-                ('column_selector', FunctionTransformer(func=lambda x: x['sex|categorical'].cat.codes.to_numpy(dtype='f4').reshape(-1,1), validate=False)),
-                ('embedding', categorical_embedding_transforms['sex|categorical'])
-            ]
-        )
-        return transformer
-
+    cat_encoder = Pipeline(steps=[
+        ('cat_codes', FunctionTransformer(func=get_cat_ids, validate=False)),
+        ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
+        ('onehot', OneHotEncoder(sparse=False, handle_unknown='ignore'))
+    ])
+    bool_encoder = Pipeline(steps=[
+        ('cat_codes', FunctionTransformer(func=get_cat_ids, validate=False)),
+        ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
+    ])
+    num_encoder = Pipeline(steps=[
+        ('imputer', SimpleImputer(missing_values=np.nan, strategy='median')),
+    ])
+    pre_transformer = ColumnTransformer(transformers=[
+        ('cat_encoder', cat_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'categorical']),
+        ('bool_encoder', bool_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'boolean']),
+        ('ord_encoder', bool_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'ordinal']),
+        ('num_encoder', num_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'numerical']),
+    ])
     rf = RandomForrestClassifierHypothesis(
         features=train_features,
-        cv_transformer=cv_transformer(),
+        pre_transformer=pre_transformer,
         n_trees=200
     )
 
@@ -40,3 +52,7 @@ def get_hypotheses(train_features, test_features):
 
 def get_scoring():
     return 'accuracy'
+
+
+def get_cv():
+    return StratifiedKFold(5)

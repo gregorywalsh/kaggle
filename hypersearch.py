@@ -1,4 +1,4 @@
-from sklearn.model_selection import KFold, RandomizedSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 from numpy import nan
 
 def _report_on_machine(hypothesis, estimator, run_id):
@@ -11,7 +11,6 @@ def search_hyperparameter_space(features, target, hypothesis, scoring, num_folds
         estimator=hypothesis.estimator,
         param_distributions=hypothesis.hyperparam_dist,
         iid=False,
-        cv=KFold(num_folds),
         return_train_score=False,
         refit=False,
         scoring=scoring,

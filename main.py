@@ -21,7 +21,7 @@ parser.add_argument('-o', '--output_folder', type=str, default='machines/',
                     help='Output folder (with trailing slash)')
 parser.add_argument('-F', '--num_folds', type=int, default=4,
                     help='The number of cross validation folds')
-parser.add_argument('-H', '--num_hyp_samp_by_hypoth', type=int, default=5,
+parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=5,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-I', '--num_hyp_samp_for_best', type=int, default=25,
                     help='The number of hyperparam samples for top performing hypothesis')
@@ -32,7 +32,7 @@ parser.add_argument('-R', '--num_rows', type=int, default=None,
 args = parser.parse_args()
 
 
-print_title('LOADING TRAINING DATA')
+print_title('LOADING TEST AND TRAIN DATA')
 # TODO: Add some validation for test vs training col_defns (or at the fit/predict stage on conduit)
 train = Dataset(
     config_fp='challenges/{}/config/train.yml'.format(args.challenge),
@@ -48,12 +48,13 @@ test = Dataset(
     num_rows=None,
     always_validate=True
 )
-print('{r} training rows and {e} loaded\n'.format(r=train.features.shape[0], e=test.features.shape[0]))
+print('{r} training rows and {e} test rows loaded\n'.format(r=train.features.shape[0], e=test.features.shape[0]))
 
 
 print_title('PERFORMING INITIAL DATA MUNGE')
 challenge = importlib.import_module('challenges.{c}.{c}'.format(c=args.challenge))
-challenge.initial_data_munge()
+for dataset in [train, test]:
+    dataset.features = challenge.initial_data_munge(dataset.features)
 print('done\n')
 
 print_title('BUILDING HYPOTHESES')
@@ -63,21 +64,23 @@ print('done\n')
 
 print_title('SEARCHING FOR BEST HYPERPARAMETERS')
 run_id = int(time())
-
-if len(hypotheses) == 1:
+if len(hypotheses) == 0:
+    raise ValueError('You must specify at least one hypothesis in your challenge file.')
+elif len(hypotheses) == 1:
     print('Training {m} machines for 1 hypothesis for {k} outer folds. Total: {t}.'.format(
-        m=args.num_hyp_samp_by_hypoth, c=len(hypotheses),
-        k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
+        m=args.num_hyp_samp_per_hypoth, c=len(hypotheses),
+        k=args.num_folds, t=args.num_hyp_samp_per_hypoth * args.num_folds)
     )
 else:
     print('Training {m} machines for each of {c} conduits for {k} inner and {k} outer folds. Total: {t}.'.format(
         m=args.num_hyp_samp_by_hypoth, c=len(hypotheses),
-        k=args.num_folds, t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2)
+        k=args.num_folds, t=args.num_hyp_samp_per_hypoth * len(hypotheses) * args.num_folds ** 2)
     )
 cv_kwargs = {
-    'n_iter': args.num_hyp_samp_by_hypoth,
+    'n_iter': args.num_hyp_samp_per_hypoth,
     'n_jobs': args.num_jobs,
-    'verbose': 1
+    'verbose': 1,
+    'cv': challenge.get_cv()
 }
 all_cv_results = []
 for hypothesis_name, hypothesis in hypotheses.items():
@@ -99,7 +102,7 @@ with open(file='challenges/{c}/results.csv'.format(c=args.challenge), mode='a+')
 
 print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
 for hypothesis_name, hypothesis in hypotheses:
-    if hypothesis.training_is_stochastic:
+    if hypothesis.is_trained_stochastically():
         # TODO implement: evaluate_training_variance(hypothesis)
         pass
     
