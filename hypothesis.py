@@ -1,6 +1,6 @@
 import numpy as np
 from warnings import warn
-from scipy.stats import randint, uniform
+from scipy.stats import randint, uniform, binom, geom
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.base import clone as clone_estimator
@@ -79,11 +79,13 @@ class RandomForestHypothesis(AbstractHypothesis):
             warn("No CV transforms given")
         pipeline = Pipeline(steps=steps)
         feature_count = get_feature_count(features=self._features, pipeline=pipeline)
+        data_count = self._features.shape[0]
         dist = {
-            'estimator__max_depth': [2 ** x for x in range(0, 6)] + [None],
+            'estimator__max_depth': [2**x for x in range(0, 8)] + [None],
+            # 'estimator__max_depth': binom(data_count - 1, (np.log(data_count**2) / np.log(2)) / data_count, 1),
             'estimator__criterion': ["gini", "entropy"],
-            'estimator__max_features': randint(max(1, int(feature_count ** 0.4)), max(2, int(feature_count ** 0.6))),
-            'estimator__min_samples_split': uniform(0, 0.5)
+            'estimator__max_features': binom(feature_count - 1, 1/(feature_count**0.5 + 1), 1),
+            'estimator__min_samples_split': uniform(0, 0.2)
         }
         return dist
 

@@ -21,7 +21,7 @@ parser.add_argument('-o', '--output_folder', type=str, default='machines/',
                     help='Output folder (with trailing slash)')
 parser.add_argument('-F', '--num_folds', type=int, default=4,
                     help='The number of cross validation folds')
-parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=5,
+parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=20,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-I', '--num_hyp_samp_for_best', type=int, default=25,
                     help='The number of hyperparam samples for top performing hypothesis')

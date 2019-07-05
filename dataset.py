@@ -7,27 +7,32 @@ PANDAS_DTYPE_MAP = {
     'unique': 'object',
     'string': 'object',
     'date': 'datetime64',
-    'boolean': 'category',
+    'binary': 'category',
     'categorical': 'category',
+    'ordinal': pd.api.types.CategoricalDtype,
     'numerical': 'float32',
-    'ordinal': 'float32'
 }
 
 
 class ColumnDefn:
     yaml_tag = u'!ColumnDefn'
 
-    def __init__(self, name, friendly_name, vartype, group, load):
+    def __init__(self, name, vartype, group, load, friendly_name=None, ordinal_elements=None):
         self.name = name
-        self.new_name = '{}|{}'.format(friendly_name, vartype)
+        self.new_name = '{}|{}'.format(friendly_name if friendly_name else name, vartype)
         self.vartype = vartype
+        self.ordinal_elements = ordinal_elements
         self.group = group
-        self.dtype = PANDAS_DTYPE_MAP[self.vartype]
+        if vartype == 'ordinal':
+            self.dtype = PANDAS_DTYPE_MAP[self.vartype](categories=ordinal_elements, ordered=True)
+        else:
+            self.dtype = PANDAS_DTYPE_MAP[self.vartype]
         self.load = load
 
     def __repr__(self):
-        return '{c}(name={n}, new_name:{m}, vartype:{v}, group={g}, dtype={d}), loaded={l}'.format(
-            c=self.__class__.__name__, n=self.name, m=self.new_name, v=self.vartype, g=self.group, d=self.dtype, l=self.load
+        return '{c}(name={n}, new_name:{m}, vartype:{v}, group={g}, dtype={d}, loaded={l}, ordinals={o}}'.format(
+            c=self.__class__.__name__, n=self.name, m=self.new_name, v=self.vartype,
+            g=self.group, d=self.dtype, l=self.load, o=self.ordinal_elements
         )
 
 

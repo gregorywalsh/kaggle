@@ -27,7 +27,7 @@ column_defns:
 
   - name: Sex
     friendly_name: sex
-    vartype: boolean
+    vartype: binary
     group: feature
     load: True
 

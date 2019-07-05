@@ -9,13 +9,13 @@ from sklearn.model_selection import StratifiedKFold
 
 
 def initial_data_munge(df):
-    return df[['sex|boolean', 'port_embarked|categorical']]
+    return df[['sex|binary', 'port_embarked|categorical', 'class|ordinal']]
 
 
 def get_hypotheses(train_features, test_features):
 
     def get_cat_ids(df):
-        def cat_codes(s):
+        def cat_codes(s):  # def'd so can pickle
             return s.cat.codes
         return df.apply(cat_codes)
 
@@ -25,7 +25,7 @@ def get_hypotheses(train_features, test_features):
         ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
         ('onehot', OneHotEncoder(sparse=False, handle_unknown='ignore'))
     ])
-    bool_encoder = Pipeline(steps=[
+    binary_encoder = Pipeline(steps=[
         ('cat_codes', FunctionTransformer(func=get_cat_ids, validate=False)),
         ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
     ])
@@ -34,8 +34,8 @@ def get_hypotheses(train_features, test_features):
     ])
     pre_transformer = ColumnTransformer(transformers=[
         ('cat_encoder', cat_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'categorical']),
-        ('bool_encoder', bool_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'boolean']),
-        ('ord_encoder', bool_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'ordinal']),
+        ('binary_encoder', binary_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'binary']),
+        ('ord_encoder', binary_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'ordinal']),
         ('num_encoder', num_encoder, [col for col in test_features.columns if col.split('|')[-1] == 'numerical']),
     ])
     rf = RandomForrestClassifierHypothesis(

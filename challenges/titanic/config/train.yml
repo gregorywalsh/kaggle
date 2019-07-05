@@ -22,6 +22,10 @@ column_defns:
   - name: Pclass
     friendly_name: class
     vartype: ordinal
+    ordinal_elements:
+      - 1
+      - 2
+      - 3
     group: feature
     load: True
 
@@ -33,7 +37,7 @@ column_defns:
 
   - name: Sex
     friendly_name: sex
-    vartype: boolean
+    vartype: binary
     group: feature
     load: True
 
