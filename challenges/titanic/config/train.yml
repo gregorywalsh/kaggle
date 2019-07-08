@@ -23,9 +23,9 @@ column_defns:
     friendly_name: class
     vartype: ordinal
     ordinal_elements:
-      - 1
-      - 2
       - 3
+      - 2
+      - 1
     group: feature
     load: True
 

@@ -16,6 +16,10 @@ column_defns:
   - name: Pclass
     friendly_name: class
     vartype: ordinal
+    ordinal_elements:
+      - 3
+      - 2
+      - 1
     group: feature
     load: True
 

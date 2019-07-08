@@ -6,7 +6,7 @@ def _report_on_machine(hypothesis, estimator, run_id):
     hypothesis.write_training_report(folder=folder, run_id=run_id, estimator=estimator)
 
 
-def search_hyperparameter_space(features, target, hypothesis, scoring, num_folds, cv_kwargs):
+def search_hyperparameter_space(features, target, hypothesis, scoring, cv_kwargs):
     hyperparam_optimizer = RandomizedSearchCV(
         estimator=hypothesis.estimator,
         param_distributions=hypothesis.hyperparam_dist,

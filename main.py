@@ -5,6 +5,10 @@ from time import time
 from argparse import ArgumentParser
 from dataset import Dataset
 from hypersearch import search_hyperparameter_space
+from matplotlib import pyplot
+
+# STATIC VARS
+CV_REPORTING_VARS = ['rank_test_score', 'mean_test_score', 'std_test_score', 'mean_fit_time', 'params']
 
 
 # HELPER FUNCTIONS
@@ -19,9 +23,7 @@ parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-o', '--output_folder', type=str, default='machines/',
                     help='Output folder (with trailing slash)')
-parser.add_argument('-F', '--num_folds', type=int, default=4,
-                    help='The number of cross validation folds')
-parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=20,
+parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=1,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-I', '--num_hyp_samp_for_best', type=int, default=25,
                     help='The number of hyperparam samples for top performing hypothesis')
@@ -58,29 +60,24 @@ for dataset in [train, test]:
 print('done\n')
 
 print_title('BUILDING HYPOTHESES')
-hypotheses = challenge.get_hypotheses(train_features=train.features, test_features=test.features)
+hypotheses = challenge.get_hypotheses(train=train, test=test)
 print('done\n')
 
 
 print_title('SEARCHING FOR BEST HYPERPARAMETERS')
 run_id = int(time())
+cv_splits = challenge.get_cv()
 if len(hypotheses) == 0:
     raise ValueError('You must specify at least one hypothesis in your challenge file.')
-elif len(hypotheses) == 1:
-    print('Training {m} machines for 1 hypothesis for {k} outer folds. Total: {t}.'.format(
-        m=args.num_hyp_samp_per_hypoth, c=len(hypotheses),
-        k=args.num_folds, t=args.num_hyp_samp_per_hypoth * args.num_folds)
-    )
-else:
-    print('Training {m} machines for each of {c} conduits for {k} inner and {k} outer folds. Total: {t}.'.format(
-        m=args.num_hyp_samp_by_hypoth, c=len(hypotheses),
-        k=args.num_folds, t=args.num_hyp_samp_per_hypoth * len(hypotheses) * args.num_folds ** 2)
-    )
+
+for hypothesis_name, _ in hypotheses.items():
+    print('Training {h} hypothesis.'.format(h=hypothesis_name))
+
 cv_kwargs = {
     'n_iter': args.num_hyp_samp_per_hypoth,
     'n_jobs': args.num_jobs,
     'verbose': 1,
-    'cv': challenge.get_cv()
+    'cv': cv_splits
 }
 all_cv_results = []
 for hypothesis_name, hypothesis in hypotheses.items():
@@ -89,42 +86,43 @@ for hypothesis_name, hypothesis in hypotheses.items():
         target=train.target.values.ravel() if len(train.target.columns) == 1 else train.target.values,
         hypothesis=hypothesis,
         scoring=challenge.get_scoring(),
-        num_folds=args.num_folds,
         cv_kwargs=cv_kwargs
     )
-    all_cv_results.append(cv_results)
-with open(file='challenges/{c}/results.csv'.format(c=args.challenge), mode='a+') as f:
-    f_writer = csv.writer(f, dialect='excel')
-    data = zip(*[cv_results[key] for key in sorted(cv_results.keys())])
-    for cv_results in all_cv_results:
+    data = zip(*[cv_results[key] for key in CV_REPORTING_VARS])
+    # TODO - Get min & max split scores, add run time, hypothesis name, pipeline
+    split_results = [cv_results[key][0] for key in cv_results.keys() if key.startswith('split')]
+    pyplot.hist(x=split_results, bins=15)
+    pyplot.show()
+    with open(file='challenges/{c}/results.csv'.format(c=args.challenge), mode='a+') as f:
+        f_writer = csv.writer(f, dialect='excel')
         f_writer.writerows(sorted(data))
 
 
-print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
-for hypothesis_name, hypothesis in hypotheses:
-    if hypothesis.is_trained_stochastically():
-        # TODO implement: evaluate_training_variance(hypothesis)
-        pass
-    
-print_title('GETTING BEST STACKED MODELS')
-if len(hypotheses) == 1:
-    print('Training {m} machines for 1 hypothesis for {k} folds. Total: {t}.'.format(
-        m=args.num_hyp_samp_by_hypoth, k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
-    )
-else:
-    print('Training {m} machines for each of {c} hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
-        m=args.num_hyp_samp_by_hypoth, c=len(hypotheses), k=args.num_folds,
-        t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2
-    ))
-best_machine = None
-best_rand_search_kwargs = {
-    'n_iter': args.num_hyp_samp_for_best,
-    'n_jobs': args.num_jobs,
-    'verbose': 1
-}
-print_title('SAVING KERNEL')
-filepath = 'challenges/{c}/kernels/{r}.joblib'.format(c=args.challenge, r=run_id)
-joblib.dump(best_machine, filename=filepath)
-print('newly trained machine saved to "{}"'.format(filepath))
-
-print_title()
+# print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
+# for hypothesis_name, hypothesis in hypotheses:
+#     if hypothesis.is_trained_stochastically():
+#         # TODO implement: evaluate_training_variance(hypothesis)
+#         pass
+#
+# print_title('GETTING BEST STACKED MODELS')
+# if len(hypotheses) == 1:
+#     print('Training {m} machines for 1 hypothesis for {k} folds. Total: {t}.'.format(
+#         m=args.num_hyp_samp_by_hypoth, k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
+#     )
+# else:
+#     print('Training {m} machines for each of {c} hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
+#         m=args.num_hyp_samp_by_hypoth, c=len(hypotheses), k=args.num_folds,
+#         t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2
+#     ))
+# best_machine = None
+# best_rand_search_kwargs = {
+#     'n_iter': args.num_hyp_samp_for_best,
+#     'n_jobs': args.num_jobs,
+#     'verbose': 1
+# }
+# print_title('SAVING KERNEL')
+# filepath = 'challenges/{c}/kernels/{r}.joblib'.format(c=args.challenge, r=run_id)
+# joblib.dump(best_machine, filename=filepath)
+# print('newly trained machine saved to "{}"'.format(filepath))
+#
+# print_title()
