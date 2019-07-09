@@ -23,7 +23,7 @@ parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-o', '--output_folder', type=str, default='machines/',
                     help='Output folder (with trailing slash)')
-parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=1,
+parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=2,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-I', '--num_hyp_samp_for_best', type=int, default=25,
                     help='The number of hyperparam samples for top performing hypothesis')
@@ -88,14 +88,14 @@ for hypothesis_name, hypothesis in hypotheses.items():
         scoring=challenge.get_scoring(),
         cv_kwargs=cv_kwargs
     )
-    data = zip(*[cv_results[key] for key in CV_REPORTING_VARS])
-    # TODO - Get min & max split scores, add run time, hypothesis name, pipeline
-    split_results = [cv_results[key][0] for key in cv_results.keys() if key.startswith('split')]
-    pyplot.hist(x=split_results, bins=15)
-    pyplot.show()
+    pipeline_desc = hypothesis.estimator.__repr__(float('inf'))  # Get all chars with float('inf')
+    all_data = list(zip(*[cv_results[key] for key in CV_REPORTING_VARS]))
+    all_splits = list(zip(*[cv_results[key] for key in cv_results.keys() if key.startswith('split')]))
+    all_min_maxes = [(min(splits), max(splits)) for splits in all_splits]
+    all_data = [[run_id, hypothesis_name, *data, *min_max, pipeline_desc] for data, min_max in zip(all_data, all_min_maxes)]
     with open(file='challenges/{c}/results.csv'.format(c=args.challenge), mode='a+') as f:
         f_writer = csv.writer(f, dialect='excel')
-        f_writer.writerows(sorted(data))
+        f_writer.writerows(sorted(all_data))
 
 
 # print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")

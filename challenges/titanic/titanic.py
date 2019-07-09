@@ -68,7 +68,7 @@ def get_hypotheses(train, test):
         n_trees=200
     )
 
-    rf_oh.hyperparam_dist = {'estimator__criterion': ['entropy'], 'estimator__max_depth': [32], 'estimator__max_features': [2], 'estimator__min_samples_split': [0.10641929674654432]}
+    rf_oh.hyperparam_dist = {'estimator__criterion': ['entropy'], 'estimator__max_depth': [32, 33], 'estimator__max_features': [2], 'estimator__min_samples_split': [0.10641929674654432]}
 
     hypotheses = {
         'rf_oh': rf_oh,

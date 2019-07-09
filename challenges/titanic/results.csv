@@ -1,4 +1,4 @@
-rank_test_score,mean_test_score,std_test_score,mean_fit_time,params
+run_id, hypothesis_name,rank_test_score,mean_test_score,std_test_score,mean_fit_time,params,min_score,max_score,pipeline
 1,0.8114135938032006,0.035533990782903965,0.2803490698337555,"{'estimator__min_samples_split': 0.10641929674654432, 'estimator__max_features': 2, 'estimator__max_depth': 32, 'estimator__criterion': 'entropy'}"
 1,0.8113756639427988,0.03491093223503689,0.27785533213615415,"{'estimator__min_samples_split': 0.10641929674654432, 'estimator__max_features': 2, 'estimator__max_depth': 32, 'estimator__criterion': 'entropy'}"
 1,0.8113819203268641,0.03622234441479465,0.27812530755996706,"{'estimator__min_samples_split': 0.10641929674654432, 'estimator__max_features': 2, 'estimator__max_depth': 32, 'estimator__criterion': 'entropy'}"
