@@ -1,14 +1,11 @@
 import importlib
-import joblib
-import csv
 from time import time
 from argparse import ArgumentParser
 from dataset import Dataset
-from hypersearch import search_hyperparameter_space
-from matplotlib import pyplot
+from hypersearch import search_hyperparam_space, save_cv_results, save_model_repr
 
 # STATIC VARS
-CV_REPORTING_VARS = ['rank_test_score', 'mean_test_score', 'std_test_score', 'mean_fit_time', 'params']
+CV_REPORTING_KEYS = ['rank_test_score', 'mean_test_score', 'std_test_score', 'mean_fit_time', 'params']
 
 
 # HELPER FUNCTIONS
@@ -23,7 +20,7 @@ parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-o', '--output_folder', type=str, default='machines/',
                     help='Output folder (with trailing slash)')
-parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=2,
+parser.add_argument('-H', '--num_hyp_samp_per_hypoth', type=int, default=1,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-I', '--num_hyp_samp_for_best', type=int, default=25,
                     help='The number of hyperparam samples for top performing hypothesis')
@@ -33,6 +30,11 @@ parser.add_argument('-R', '--num_rows', type=int, default=None,
                     help='The number of rows or fraction in interval [0,1] to use in training')
 args = parser.parse_args()
 
+
+# MAIN SCRIPT
+print_title('BEGINNING RUN')
+run_id = int(time())
+print('Challenge {c}, run id {r}\n'.format(c=args.challenge, r=run_id))
 
 print_title('LOADING TEST AND TRAIN DATA')
 # TODO: Add some validation for test vs training col_defns (or at the fit/predict stage on conduit)
@@ -59,70 +61,74 @@ for dataset in [train, test]:
     dataset.features = challenge.initial_data_munge(dataset.features)
 print('done\n')
 
+
 print_title('BUILDING HYPOTHESES')
 hypotheses = challenge.get_hypotheses(train=train, test=test)
 print('done\n')
 
 
 print_title('SEARCHING FOR BEST HYPERPARAMETERS')
-run_id = int(time())
-cv_splits = challenge.get_cv()
 if len(hypotheses) == 0:
     raise ValueError('You must specify at least one hypothesis in your challenge file.')
-
-for hypothesis_name, _ in hypotheses.items():
-    print('Training {h} hypothesis.'.format(h=hypothesis_name))
-
 cv_kwargs = {
     'n_iter': args.num_hyp_samp_per_hypoth,
     'n_jobs': args.num_jobs,
     'verbose': 1,
-    'cv': cv_splits
+    'cv': challenge.get_cv()
 }
 all_cv_results = []
 for hypothesis_name, hypothesis in hypotheses.items():
-    hypotheses[hypothesis_name].best_hyperparams, cv_results = search_hyperparameter_space(
+    print('Training hypothesis "{h}".'.format(h=hypothesis_name))
+    hypothesis.best_hyperparams, cv_results = search_hyperparam_space(
         features=train.features,
         target=train.target.values.ravel() if len(train.target.columns) == 1 else train.target.values,
         hypothesis=hypothesis,
         scoring=challenge.get_scoring(),
-        cv_kwargs=cv_kwargs
+        cv_kwargs=cv_kwargs,
     )
-    pipeline_desc = hypothesis.estimator.__repr__(float('inf'))  # Get all chars with float('inf')
-    all_data = list(zip(*[cv_results[key] for key in CV_REPORTING_VARS]))
-    all_splits = list(zip(*[cv_results[key] for key in cv_results.keys() if key.startswith('split')]))
-    all_min_maxes = [(min(splits), max(splits)) for splits in all_splits]
-    all_data = [[run_id, hypothesis_name, *data, *min_max, pipeline_desc] for data, min_max in zip(all_data, all_min_maxes)]
-    with open(file='challenges/{c}/results.csv'.format(c=args.challenge), mode='a+') as f:
-        f_writer = csv.writer(f, dialect='excel')
-        f_writer.writerows(sorted(all_data))
+    save_cv_results(
+        path='challenges/{c}/results.csv'.format(c=args.challenge),
+        run_id=run_id,
+        hypothesis_name=hypothesis_name,
+        cv_results=cv_results,
+        cv_reporting_keys=CV_REPORTING_KEYS
+    )
+    save_model_repr(
+        path='challenges/{c}/{r}_{h}.txt'.format(c=args.challenge, r=run_id, h=hypothesis_name),
+        model=hypothesis.model
+    )
+    hypothesis.model.set_params(**hypothesis.best_hyperparams)
+    hypothesis.model.fit(X=train.features, y=train.target)
+    import numpy as np
+    predictions = hypothesis.model.predict(test.features).astype('int')
+    submission = np.column_stack((test.meta['passenger_id|unique'].astype('int').to_numpy(), predictions))
+    np.savetxt('prediction.csv', submission, delimiter=",")
 
-
-# print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
-# for hypothesis_name, hypothesis in hypotheses:
-#     if hypothesis.is_trained_stochastically():
-#         # TODO implement: evaluate_training_variance(hypothesis)
-#         pass
-#
-# print_title('GETTING BEST STACKED MODELS')
-# if len(hypotheses) == 1:
-#     print('Training {m} machines for 1 hypothesis for {k} folds. Total: {t}.'.format(
-#         m=args.num_hyp_samp_by_hypoth, k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
-#     )
-# else:
-#     print('Training {m} machines for each of {c} hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
-#         m=args.num_hyp_samp_by_hypoth, c=len(hypotheses), k=args.num_folds,
-#         t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2
-#     ))
-# best_machine = None
-# best_rand_search_kwargs = {
-#     'n_iter': args.num_hyp_samp_for_best,
-#     'n_jobs': args.num_jobs,
-#     'verbose': 1
-# }
-# print_title('SAVING KERNEL')
-# filepath = 'challenges/{c}/kernels/{r}.joblib'.format(c=args.challenge, r=run_id)
-# joblib.dump(best_machine, filename=filepath)
-# print('newly trained machine saved to "{}"'.format(filepath))
-#
-# print_title()
+# # print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
+# # for hypothesis_name, hypothesis in hypotheses:
+# #     if hypothesis.is_trained_stochastically():
+# #         # TODO implement: evaluate_training_variance(hypothesis)
+# #         pass
+# #
+# # print_title('GETTING BEST STACKED MODELS')
+# # if len(hypotheses) == 1:
+# #     print('Training {m} machines for 1 hypothesis for {k} folds. Total: {t}.'.format(
+# #         m=args.num_hyp_samp_by_hypoth, k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
+# #     )
+# # else:
+# #     print('Training {m} machines for each of {c} hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
+# #         m=args.num_hyp_samp_by_hypoth, c=len(hypotheses), k=args.num_folds,
+# #         t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2
+# #     ))
+# # best_machine = None
+# # best_rand_search_kwargs = {
+# #     'n_iter': args.num_hyp_samp_for_best,
+# #     'n_jobs': args.num_jobs,
+# #     'verbose': 1
+# # }
+# # print_title('SAVING KERNEL')
+# # filepath = 'challenges/{c}/kernels/{r}.joblib'.format(c=args.challenge, r=run_id)
+# # joblib.dump(best_machine, filename=filepath)
+# # print('newly trained machine saved to "{}"'.format(filepath))
+# #
+# # print_title()

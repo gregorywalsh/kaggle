@@ -8,9 +8,12 @@ PANDAS_DTYPE_MAP = {
     'string': 'object',
     'date': 'datetime64',
     'binary': 'category',
+    'bool': 'boolean',
     'categorical': 'category',
+    'categorical_low': 'category',
+    'categorical_hi': 'category',
     'ordinal': pd.api.types.CategoricalDtype,
-    'numerical': 'float32',
+    'numerical': 'float64',
 }
 
 

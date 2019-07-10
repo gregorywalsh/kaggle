@@ -1,35 +1,19 @@
-import numpy as np
-from warnings import warn
-from scipy.stats import randint, uniform, binom
+from scipy.stats import uniform, binom
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.base import clone as clone_estimator
 
 
-class LogUniform:
-    def __init__(self, a=-1, b=0, base=10):
-        self.loc = a
-        self.scale = b - a
-        self.base = base
-
-    def rvs(self, size=None, random_state=None):
-        uniform_dist = uniform(loc=self.loc, scale=self.scale)
-        if size is None:
-            return np.power(self.base, uniform_dist.rvs(random_state=random_state))
-        else:
-            return np.power(self.base, uniform_dist.rvs(size=size, random_state=random_state))
-
-
 class AbstractHypothesis:
 
-    def __init__(self, dataset, classifier, pre_transformer=None, best_hyperparams=None):
+    def __init__(self, dataset, estimator, transformer=None, best_hyperparams=None):
         self._dataset = dataset
-        self._classifier = classifier
-        self._pre_transformer = pre_transformer
-        self.estimator = Pipeline(steps=[
-            ('pre_transformer', pre_transformer),
-            ('estimator', classifier)
+        self._estimator = estimator
+        self._transformer = transformer
+        self.model = Pipeline(steps=[
+            ('transformer', transformer),
+            ('estimator', estimator)
         ])
         self.training_is_stochastic = self.is_trained_stochastically()
         self.hyperparam_dist = self._build_hyperparam_dist()
@@ -55,11 +39,11 @@ class AbstractHypothesis:
 
 class RandomForestHypothesis(AbstractHypothesis):
 
-    def __init__(self, classifier, dataset, pre_transformer):
+    def __init__(self, estimator, dataset, transformer):
         super().__init__(
             dataset=dataset,
-            classifier=classifier,
-            pre_transformer=pre_transformer
+            estimator=estimator,
+            transformer=transformer
         )
 
     def is_trained_stochastically(self):
@@ -81,8 +65,8 @@ class RandomForestHypothesis(AbstractHypothesis):
             return feature_count
 
         steps = []
-        if self._pre_transformer:
-            steps.append(('pre_transformer', self._pre_transformer))
+        if self._transformer:
+            steps.append(('pre_transformer', self._transformer))
         pipeline = Pipeline(steps=steps)
         feature_count = get_feature_count(dataset=self._dataset, pipeline=pipeline)
         dist = {
@@ -96,32 +80,32 @@ class RandomForestHypothesis(AbstractHypothesis):
 
 
 class RandomForrestClassifierHypothesis(RandomForestHypothesis):
-    def __init__(self, dataset, pre_transformer, n_trees=100):
+    def __init__(self, dataset, transformer, n_trees=100):
         super().__init__(
             dataset=dataset,
-            classifier=RandomForestClassifier(n_jobs=1, bootstrap=True, n_estimators=n_trees),
-            pre_transformer=pre_transformer
+            estimator=RandomForestClassifier(n_jobs=1, bootstrap=True, n_estimators=n_trees),
+            transformer=transformer
         )
 
 
 class RandomForrestRegressorHypothesis(RandomForestHypothesis):
-    def __init__(self, dataset, pre_transformer, n_trees=100):
+    def __init__(self, dataset, transformer, n_trees=100):
         super().__init__(
             dataset=dataset,
-            classifier=RandomForestRegressor(n_jobs=1, bootstrap=True, n_estimators=n_trees),
-            pre_transformer=pre_transformer
+            estimator=RandomForestRegressor(n_jobs=1, bootstrap=True, n_estimators=n_trees),
+            transformer=transformer
         )
 
 
 class LogisticRegressionHypothesis(AbstractHypothesis):
 
-    def __init__(self, dataset, pre_transformer, penalty, solver, tol=None, max_iter=None):
+    def __init__(self, dataset, transformer, penalty, solver, tol=None, max_iter=None):
         self.solver = solver
         self.penalty = penalty
         super().__init__(
             dataset=dataset,
-            classifier=LogisticRegression(penalty=penalty, solver=solver, tol=tol, max_iter=max_iter),
-            pre_transformer=pre_transformer
+            estimator=LogisticRegression(penalty=penalty, solver=solver, tol=tol, max_iter=max_iter),
+            transformer=transformer
         )
 
     def is_trained_stochastically(self):
@@ -139,5 +123,3 @@ class LogisticRegressionHypothesis(AbstractHypothesis):
         if self.penalty == 'elasticnet':
             dist['estimator__l1_ratio'] = uniform(0, 1)
         return dist
-
-a = np.log

@@ -25,7 +25,7 @@ column_defns:
 
   - name: Name
     friendly_name: name
-    vartype: string
+    vartype: unique
     group: feature
     load: True
 
