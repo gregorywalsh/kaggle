@@ -1,17 +1,15 @@
 import numpy as np
-import pandas as pd
-
-from hypothesis import RandomForrestClassifierHypothesis
+from hypotheses import RandomForrestClassifierHypothesis
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import RepeatedStratifiedKFold, StratifiedKFold
-from category_encoders.target_encoder import TargetEncoder
+from sklearn.model_selection import RepeatedStratifiedKFold
 from category_encoders.hashing import HashingEncoder
 
 
-def initial_data_munge(df):
+def munge_features(df):
     df['title|categorical'] = df['name|unique'].str.extract(pat='(?<=, )(\\w+)', expand=False).astype('category')
     df['surname|string'] = df['name|unique'].str.extract(pat='([\\w'']+)')
     df['in_family|boolean'] = (df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0).astype('float64')
@@ -21,12 +19,13 @@ def initial_data_munge(df):
     return df.drop(columns=['name|unique'])
 
 
-def get_hypotheses(train, test):
+def get_cat_ids(df):
+    def cat_codes(s):  # def'd rather than lambda so can pickle, FYI cat code -1 is for np.NaN
+        return s.cat.codes
+    return df.apply(cat_codes)
 
-    def get_cat_ids(df):
-        def cat_codes(s):  # def'd so can pickle, FYI cat code -1 is for np.NaN
-            return s.cat.codes
-        return df.apply(cat_codes)
+
+def get_hypotheses(train, hyper_searcher_kwargs):
 
     # SKLEARN RANDOM FOREST CLASSIFIER
     numerical = Pipeline(steps=[
@@ -53,12 +52,13 @@ def get_hypotheses(train, test):
     boolean = Pipeline(steps=[
         ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
     ])
-    num_cols = [col for col in test.features if col.split('|')[-1] == 'numerical']
-    string_cols = [col for col in test.features.columns if col.split('|')[-1] == 'string']
-    cat_cols = [col for col in test.features.columns if col.split('|')[-1] == 'categorical']
-    ordinal_cols = [col for col in test.features if col.split('|')[-1] == 'ordinal']
-    binary_cols = [col for col in test.features if col.split('|')[-1] == 'binary']
-    boolean_cols = [col for col in test.features if col.split('|')[-1] == 'boolean']
+
+    num_cols = [col for col in train.features if col.split('|')[-1] == 'numerical']
+    string_cols = [col for col in train.features.columns if col.split('|')[-1] == 'string']
+    cat_cols = [col for col in train.features.columns if col.split('|')[-1] == 'categorical']
+    ordinal_cols = [col for col in train.features if col.split('|')[-1] == 'ordinal']
+    binary_cols = [col for col in train.features if col.split('|')[-1] == 'binary']
+    boolean_cols = [col for col in train.features if col.split('|')[-1] == 'boolean']
 
     transformer = ColumnTransformer(transformers=[
         ('num', numerical, num_cols),
@@ -69,27 +69,30 @@ def get_hypotheses(train, test):
         ('bool', boolean, boolean_cols),
     ])
 
-    rf = RandomForrestClassifierHypothesis(
-        dataset=train,
-        transformer=transformer,
-        n_trees=200
-    )
+    hyper_searcher_kwargs = {
+        **hyper_searcher_kwargs,
+        'cv': RepeatedStratifiedKFold(n_splits=5, n_repeats=1),
+        'scoring': 'accuracy',
+        'error_score': 'raise',
+        'refit': True
+    }
 
-    additional_hyperparam_dists = {
+    additional_hyper_dists = {
         # 'transformer__cat__target__smoothing': [0.25, 0.5, 0.75],
         'transformer__str__hashing__n_components': [1, 2, 4, 8, 16, 32]
     }
-    rf.hyperparam_dist = {**rf.hyperparam_dist, **additional_hyperparam_dists}
+
+    rf = RandomForrestClassifierHypothesis(
+        dataset=train,
+        transformer=transformer,
+        hyper_searcher_strategy=RandomizedSearchCV,
+        hyper_searcher_kwargs=hyper_searcher_kwargs,
+        additional_hyper_dists=additional_hyper_dists,
+        n_trees=200
+    )
 
     hypotheses = {
         'rf': rf,
     }
+
     return hypotheses
-
-
-def get_scoring():
-    return 'accuracy'
-
-
-def get_cv():
-    return RepeatedStratifiedKFold(n_splits=5, n_repeats=1)

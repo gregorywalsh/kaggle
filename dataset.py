@@ -41,9 +41,10 @@ class ColumnDefn:
 
 class Dataset:
 
-    def __init__(self, config_fp, data, num_rows, always_validate=True, verbose=False):
+    def __init__(self, config_fp, data, num_rows, is_test=False, always_validate=True, verbose=False):
 
         self._is_first_load = True
+        self._is_test = is_test
         self._verbose = verbose
         self._always_validate = always_validate
 
@@ -58,8 +59,7 @@ class Dataset:
         # Update flags
         self._is_first_load = False
 
-    @staticmethod
-    def load_config(config_fp):
+    def load_config(self, config_fp):
 
         with open(config_fp, 'r') as f:
             try:
@@ -67,7 +67,9 @@ class Dataset:
             except yaml.YAMLError as exc:
                 print(exc)
 
-        col_defns = [ColumnDefn(**kwargs) for kwargs in raw_config['column_defns']]
+        col_defns = [ColumnDefn(**kwargs) for kwargs in raw_config['column_defns']
+                     if not (self._is_test and kwargs['group'] == 'target')  # Prevent train from loading target cols
+                     ]
         return raw_config['pandas_csv_kwargs'], col_defns
 
     def load_from_csv(self, filepath, col_defns, pandas_csv_kwargs):
