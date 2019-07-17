@@ -1,7 +1,7 @@
 import pandas as pd
 import csv
 import collections
-import yaml
+from util import load_yaml_config
 
 PANDAS_DTYPE_MAP = {
     'unique': 'object',
@@ -41,39 +41,25 @@ class ColumnDefn:
 
 class Dataset:
 
-    def __init__(self, config_fp, data, num_rows, is_test=False, always_validate=True, verbose=False):
-
+    def __init__(self, config_fp, data_fp, num_rows, is_test=True, always_validate=True, verbose=False):
+        config = load_yaml_config(fp=config_fp)
         self._is_first_load = True
         self._is_test = is_test
         self._verbose = verbose
         self._always_validate = always_validate
-
-        pandas_csv_kwargs, self.col_defns = self.load_config(config_fp)
-        pandas_csv_kwargs['nrows'] = num_rows
+        self.col_defns = self.parse_col_defs(config)
         self.meta, self.features, self.target = self.load_from_csv(
-            filepath=data,
+            filepath=data_fp,
             col_defns=self.col_defns,
-            pandas_csv_kwargs=pandas_csv_kwargs
+            pandas_csv_kwargs={**config['pandas_csv_kwargs'], 'nrows': num_rows}
         )
-
-        # Update flags
         self._is_first_load = False
 
-    def load_config(self, config_fp):
-
-        with open(config_fp, 'r') as f:
-            try:
-                raw_config = yaml.safe_load(f)
-            except yaml.YAMLError as exc:
-                print(exc)
-
-        col_defns = [ColumnDefn(**kwargs) for kwargs in raw_config['column_defns']
-                     if not (self._is_test and kwargs['group'] == 'target')  # Prevent train from loading target cols
-                     ]
-        return raw_config['pandas_csv_kwargs'], col_defns
+    def parse_col_defs(self, config):
+        return [ColumnDefn(**kwargs) for kwargs in config['column_defns']
+                if not (self._is_test and kwargs['group'] == 'target')]  # Prevent test from loading target cols
 
     def load_from_csv(self, filepath, col_defns, pandas_csv_kwargs):
-
         # Validate the column names
         col_names = list(defn.name for defn in col_defns)
         self._check_cols(source_col_names=Dataset._get_file_columns(filepath), col_names=col_names)
@@ -89,28 +75,15 @@ class Dataset:
             **pandas_csv_kwargs
         )
 
+        # Update df column names
         col_defs_by_name = {defn.name: defn for defn in col_defns if defn.load}
         new_col_names = [col_defs_by_name[name].new_name for name in df.columns]
         df.columns = new_col_names
 
-        # Return
+        # Return views
         return self._create_df_views(df=df, col_defns=col_defns)
 
-    # def load_from_list(self, list_of_tuples, source_col_names):
-    # TODO: Reintegrate loading from a list of tuples
-    #
-    #     # Validate the column names
-    #     self._check_cols(source_col_names=source_col_names)
-    #
-    #     # Create a Dataframe from the list of tuples
-    #     df = pd.DataFrame(
-    #         data=list_of_tuples,
-    #         columns=source_col_names,
-    #     )
-    #     self._create_df_views(df)
-
     def _check_cols(self, source_col_names, col_names):
-
         if self._always_validate or self._is_first_load:
             if len(set(source_col_names)) != len(source_col_names):
                 raise ValueError(
@@ -134,7 +107,6 @@ class Dataset:
                 )
 
     def _create_df_views(self, df, col_defns):
-
         # Determine the variable types of the cols
         if self._always_validate or self._is_first_load:
             self.meta_col_names = [defn.new_name for defn in col_defns if defn.group == 'meta']

@@ -1,3 +1,9 @@
+submission_header: 'PassengerId,Survived'
+
+submission_format:
+  - '%i'
+  - '%i'
+
 pandas_csv_kwargs:
   delimiter: ','
   header: 0

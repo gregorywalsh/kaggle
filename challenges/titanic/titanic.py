@@ -1,5 +1,5 @@
 import numpy as np
-from hypotheses import RandomForrestClassifierHypothesis
+from hypotheses import RandomForrestClassifierHypothesis, save_hypothesis
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
@@ -9,14 +9,18 @@ from sklearn.model_selection import RepeatedStratifiedKFold
 from category_encoders.hashing import HashingEncoder
 
 
+# def munge_features(df):
+#     df['title|categorical'] = df['name|unique'].str.extract(pat=r'(?<=, )(\w+)', expand=False).astype('category')
+#     df['surname|string'] = df['name|unique'].str.extract(pat=r'([\w'']+)')
+#     df['in_family|boolean'] = (df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0).astype('float64')
+#     df['has_cabin|boolean'] = (~df['cabin_id|string'].isnull()).astype('float64')
+#     df['cabin_letter|categorical'] = df['cabin_id|string'].str.extract(pat=r'(\w)', expand=False).astype('category')
+#     df['cabin_number|numerical'] = df['cabin_id|string'].str.extract(pat=r'(\d+)').astype(np.float64)
+#     return df.drop(columns=['name|unique'])
+
+
 def munge_features(df):
-    df['title|categorical'] = df['name|unique'].str.extract(pat='(?<=, )(\\w+)', expand=False).astype('category')
-    df['surname|string'] = df['name|unique'].str.extract(pat='([\\w'']+)')
-    df['in_family|boolean'] = (df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0).astype('float64')
-    df['has_cabin|boolean'] = (~df['cabin_id|string'].isnull()).astype('float64')
-    df['cabin_letter|categorical'] = df['cabin_id|string'].str.extract(pat='(\\w)', expand=False).astype('category')
-    df['cabin_number|numerical'] = df['cabin_id|string'].str.extract(pat='(\\d+)').astype(np.float64)
-    return df.drop(columns=['name|unique'])
+    return df[['sex|binary', 'class|ordinal', 'port_embarked|categorical']]
 
 
 def get_cat_ids(df):
@@ -25,7 +29,7 @@ def get_cat_ids(df):
     return df.apply(cat_codes)
 
 
-def get_hypotheses(train, hyper_searcher_kwargs):
+def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
 
     # SKLEARN RANDOM FOREST CLASSIFIER
     numerical = Pipeline(steps=[
@@ -71,7 +75,7 @@ def get_hypotheses(train, hyper_searcher_kwargs):
 
     hyper_searcher_kwargs = {
         **hyper_searcher_kwargs,
-        'cv': RepeatedStratifiedKFold(n_splits=5, n_repeats=1),
+        'cv': RepeatedStratifiedKFold(n_splits=cv_folds, n_repeats=cv_repeats),
         'scoring': 'accuracy',
         'error_score': 'raise',
         'refit': True
@@ -88,7 +92,7 @@ def get_hypotheses(train, hyper_searcher_kwargs):
         hyper_searcher_strategy=RandomizedSearchCV,
         hyper_searcher_kwargs=hyper_searcher_kwargs,
         additional_hyper_dists=additional_hyper_dists,
-        n_trees=200
+        n_trees=128
     )
 
     hypotheses = {
@@ -96,3 +100,11 @@ def get_hypotheses(train, hyper_searcher_kwargs):
     }
 
     return hypotheses
+
+if __name__ == '__main__':
+    hypotheses = get_hypotheses(train=train, hyper_searcher_kwargs=hyper_searcher_kwargs,
+                                          cv_folds=args.cv_folds, cv_repeats=args.cv_repeats)
+    save_hypothesis(
+        path='challenges/{c}/hypotheses/{h}_{r}.dump'.format(c=args.challenge, r=run_time, h=hypothesis_name),
+        hypothesis=hypothesis
+    )
