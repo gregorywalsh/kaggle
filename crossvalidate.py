@@ -20,9 +20,9 @@ parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-H', '--num_hyp_samples', type=int, default=0,
                     help='The number of hyperparam samples per hypothesis')
-parser.add_argument('-K', '--cv_folds', type=int, default=10,
+parser.add_argument('-K', '--cv_folds', type=int, default=25,
                     help='The number of CV folds')
-parser.add_argument('-P', '--cv_repeats', type=int, default=2,
+parser.add_argument('-P', '--cv_repeats', type=int, default=5,
                     help='The number of CV repeats')
 parser.add_argument('-J', '--num_jobs', type=int, default=-1,
                     help='The number of parallel jobs to run (-1 all cores)')

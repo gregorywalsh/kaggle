@@ -7,20 +7,41 @@ from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import RepeatedStratifiedKFold
 from category_encoders.hashing import HashingEncoder
-
+from category_encoders import LeaveOneOutEncoder
 
 # def munge_features(df):
 #     df['title|categorical'] = df['name|unique'].str.extract(pat=r'(?<=, )(\w+)', expand=False).astype('category')
 #     df['surname|string'] = df['name|unique'].str.extract(pat=r'([\w'']+)')
-#     df['in_family|boolean'] = (df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0).astype('float64')
+#     df['in_family|boolean'] = ((df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0)).astype('float64')
 #     df['has_cabin|boolean'] = (~df['cabin_id|string'].isnull()).astype('float64')
 #     df['cabin_letter|categorical'] = df['cabin_id|string'].str.extract(pat=r'(\w)', expand=False).astype('category')
 #     df['cabin_number|numerical'] = df['cabin_id|string'].str.extract(pat=r'(\d+)').astype(np.float64)
 #     return df.drop(columns=['name|unique'])
 
 
+def get_gender_maturity(row):
+    if row['sex|binary'] == 'female':
+        gm = 'female'
+    elif row['title|categorical'] == 'Master':
+        gm = 'boy'
+    else:
+        gm = 'man'
+    return gm
+
+
 def munge_features(df):
-    return df[['sex|binary', 'class|ordinal', 'port_embarked|categorical']]
+    # df['cabin_letter|categorical'] = df['cabin_id|string'].str.extract(pat=r'(\w)', expand=False).astype('category')
+    # df['cabin_number|numerical'] = df['cabin_id|string'].str.extract(pat=r'(\d+)').astype(np.float64)
+    # df['in_family|boolean'] = ((df['num_sib_spouses|numerical'] > 0) & (df['num_parents_children|numerical'] > 0)).astype('float64')
+    df['title|categorical'] = df['name|unique'].str.extract(pat=r'(?<=, )(\w+)', expand=False).astype('category')
+    df['gender+maturity|categorical'] = df.apply(get_gender_maturity, axis=1).astype('category')
+    df['surname|string'] = df['name|unique'].str.extract(pat=r'([\w'']+)')
+    df['group|string'] = (df['ticket_id|string'].slice(0,-1) + df['fare|numerical'].astype('str') + df['port_embarked|categorical'].astype('str'))
+    return df[[
+        'gender+maturity|categorical',
+        'group|string',
+        'class|ordinal',
+    ]]
 
 
 def get_cat_ids(df):
@@ -37,7 +58,7 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
     ])
     string = Pipeline(steps=[
         ('imputer', SimpleImputer(missing_values=np.nan, strategy='most_frequent')),
-        ('hashing', HashingEncoder(return_df=False, n_components=10))
+        ('target', LeaveOneOutEncoder(return_df=False, sigma=0)),
     ])
     categorical = Pipeline(steps=[
         ('cat_codes', FunctionTransformer(func=get_cat_ids, validate=False)),
@@ -56,6 +77,7 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
     boolean = Pipeline(steps=[
         ('imputer', SimpleImputer(missing_values=-1, strategy='most_frequent')),
     ])
+    # TODO - WRITE TRANSFORMER THAT CAN EXTRACT WCG GROUP AND DETERMINE IF PERISHED
 
     num_cols = [col for col in train.features if col.split('|')[-1] == 'numerical']
     string_cols = [col for col in train.features.columns if col.split('|')[-1] == 'string']
@@ -92,7 +114,7 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
         hyper_searcher_strategy=RandomizedSearchCV,
         hyper_searcher_kwargs=hyper_searcher_kwargs,
         additional_hyper_dists=additional_hyper_dists,
-        n_trees=128
+        n_trees=256
     )
 
     hypotheses = {
