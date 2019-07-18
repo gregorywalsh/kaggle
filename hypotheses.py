@@ -1,7 +1,8 @@
 import numpy as np
-from scipy.stats import uniform, binom
+from scipy.stats import uniform, binom, randint
 from distributions import loguniform
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from lightgbm.sklearn import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.base import clone as clone_estimator
@@ -102,6 +103,7 @@ class RandomForestHypothesis(AbstractHypothesis):
 
 
 class RandomForrestClassifierHypothesis(RandomForestHypothesis):
+
     def __init__(self, dataset, hyper_searcher_strategy, hyper_searcher_kwargs, transformer=None,
                  additional_hyper_dists=None, n_trees=200):
         super().__init__(
@@ -115,6 +117,7 @@ class RandomForrestClassifierHypothesis(RandomForestHypothesis):
 
 
 class RandomForrestRegressorHypothesis(RandomForestHypothesis):
+
     def __init__(self, dataset, hyper_searcher_strategy, hyper_searcher_kwargs, transformer=None,
                  additional_hyper_dists=None, n_trees=200):
         super().__init__(
@@ -156,4 +159,34 @@ class LogisticRegressionHypothesis(AbstractHypothesis):
         }
         if self.penalty == 'elasticnet':
             dist['estimator__l1_ratio'] = uniform(0, 1)
+        return dist
+
+
+class LightGBMClassifierHypothesis(AbstractHypothesis):
+
+    def __init__(self, dataset, hyper_searcher_strategy, hyper_searcher_kwargs, transformer=None,
+                 additional_hyper_dists=None, n_trees=512):
+        super().__init__(
+            dataset=dataset,
+            estimator=LGBMClassifier(n_estimators=n_trees),
+            transformer=transformer,
+            hyper_searcher_strategy=hyper_searcher_strategy,
+            hyper_searcher_kwargs=hyper_searcher_kwargs,
+            additional_hyper_dists=additional_hyper_dists
+        )
+
+    def is_trained_stochastically(self):
+        # RF training is stochastic due to bagging of training data and features per tree
+        return True
+
+    def is_ensemble_model(self):
+        # RF contains ensemble of bootstrapped trees AKA bagging
+        return True
+
+    def _basic_hyper_dists(self):
+        sample_count = self.dataset.features.shape[0]
+        dist = {
+            'estimator__min_data_in_leaf': randint(1, 50),
+            'estimator__min_child_samples': [None]
+        }
         return dist

@@ -22,7 +22,7 @@ parser.add_argument('-H', '--num_hyp_samples', type=int, default=0,
                     help='The number of hyperparam samples per hypothesis')
 parser.add_argument('-K', '--cv_folds', type=int, default=25,
                     help='The number of CV folds')
-parser.add_argument('-P', '--cv_repeats', type=int, default=5,
+parser.add_argument('-P', '--cv_repeats', type=int, default=20,
                     help='The number of CV repeats')
 parser.add_argument('-J', '--num_jobs', type=int, default=-1,
                     help='The number of parallel jobs to run (-1 all cores)')
@@ -51,12 +51,21 @@ train = Dataset(
     verbose=True,
     always_validate=True
 )
-print('{r} training rows loaded\n'.format(r=train.features.shape[0]))
+test = Dataset(
+    config_fp='challenges/{}/data/config.yml'.format(args.challenge),
+    data_fp='challenges/{}/data/test.csv'.format(args.challenge),
+    is_test=True,
+    verbose=True,
+    num_rows=None,
+    always_validate=True
+)
+print('{tr} training rows and {te} test rows loaded\n'.format(tr=train.features.shape[0], te=test.features.shape[0]))
 
 
 print_title('MUNGING TRAINING DATA')
 challenge = importlib.import_module('challenges.{c}.{c}'.format(c=args.challenge))
-train.features = challenge.munge_features(train.features)
+train.features, _ = challenge.munge_features(train.features, test.features)
+print('{tr} training rows munged'.format(tr=train.features.shape[0]))
 print('done\n')
 
 

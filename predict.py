@@ -11,7 +11,7 @@ from util import print_title, load_yaml_config
 parser = ArgumentParser(description='Train and evaluate bunch of models')
 parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
-parser.add_argument('-r', '--run_id', type=str, default='rf_1563447463',
+parser.add_argument('-r', '--run_id', type=str, default='lgb_1563476819',
                     help='The run id of the hypothesis to load')
 parser.add_argument('-J', '--num_jobs', type=int, default=-1,
                     help='The number of parallel jobs to run (-1 all cores)')
@@ -28,7 +28,15 @@ print('Done')
 
 print_title('LOADING HYPOTHESIS AND TRAINING DATA')
 print('Challenge {c}, run id {r}\n'.format(c=args.challenge, r=args.run_id))
-hypothesis = load_hypothesis(path='challenges/{c}/hypotheses/{r}.dump'.format(c=args.challenge, r=args.run_id),)
+hypothesis = load_hypothesis(path='challenges/{c}/hypotheses/{r}.dump'.format(c=args.challenge, r=args.run_id))
+train = Dataset(
+    config_fp='challenges/{}/data/config.yml'.format(args.challenge),
+    data_fp='challenges/{}/data/train.csv'.format(args.challenge),
+    is_test=False,
+    num_rows=None,
+    verbose=True,
+    always_validate=True
+)
 test = Dataset(
     config_fp='challenges/{}/data/config.yml'.format(args.challenge),
     data_fp='challenges/{}/data/test.csv'.format(args.challenge),
@@ -40,7 +48,7 @@ test = Dataset(
 
 print_title('MUNGING TEST DATA')
 challenge = importlib.import_module('challenges.{c}.{c}'.format(c=args.challenge))
-test.features = challenge.munge_features(test.features)
+_, test.features = challenge.munge_features(train.features, test.features)
 print('done\n')
 
 
