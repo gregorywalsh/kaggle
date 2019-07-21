@@ -48,7 +48,7 @@ class Dataset:
         self._verbose = verbose
         self._always_validate = always_validate
         self.col_defns = self.parse_col_defs(config)
-        self.meta, self.features, self.target = self.load_from_csv(
+        self.meta, self.features, self.target, self.df = self.load_from_csv(
             filepath=data_fp,
             col_defns=self.col_defns,
             pandas_csv_kwargs={**config['pandas_csv_kwargs'], 'nrows': num_rows}
@@ -118,7 +118,7 @@ class Dataset:
         features = df[self.feature_col_names] if self.feature_col_names else None
         target = df[self.target_col_names] if self.target_col_names else None
 
-        return meta, features, target
+        return meta, features, target, df
 
 
     @staticmethod

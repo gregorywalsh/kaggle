@@ -38,3 +38,17 @@ def save_cv_results(path, processed_cv_results, reporting_keys, top_n=None):
 def save_model_repr(path, model):
     with open(file=path, mode='a+') as f:
         f.write(model.__repr__(float('inf')))  # Get all chars with float('inf')
+
+
+def print_df_details(df, name):
+
+    print('=' * 100, '\n')
+    print('Details of ' + name, '\n')
+    print("Number of rows in train dataset : ", df.shape[0], '\n')
+    print("Head:")
+    print(df.head(5), '\n')
+    print("Tail:")
+    print(df.tail(5), '\n')
+    print(df.describe(), '\n')
+    print(df.info(), '\n')
+    print('='*100)

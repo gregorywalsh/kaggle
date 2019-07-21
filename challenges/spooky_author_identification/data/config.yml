@@ -1,0 +1,31 @@
+submission_header: '"id","EAP","HPL","MWS"'
+
+submission_format:
+  - '%s'
+  - '%f'
+  - '%f'
+  - '%f'
+
+pandas_csv_kwargs:
+  delimiter: ','
+  header: 0
+  na_values:
+    - ''
+  encoding: 'utf-8'
+  engine: 'c'
+
+column_defns:
+  - name: id
+    vartype: unique
+    group: meta
+    load: True
+
+  - name: text
+    vartype: string
+    group: feature
+    load: True
+
+  - name: author
+    vartype: categorical
+    group: target
+    load: True
