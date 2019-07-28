@@ -1,0 +1,23 @@
+PROJECT GOAL
+Author classification of sentences measured by mean multi-class logarithmic loss
+
+DATASET
+Collection of English sentences, with punctuation, and author labels
+
+FEATURE ENGINEERING IDEAS
+
+- Possible embeddings for sequence to multi-class model
+	- NMF of sentence-term count matrix
+	- SVD of sentence-term count matrix
+	- Glove (term co-occurrences)
+	- Skip-gram Word2Vec (term embeddings)
+	- Fastext (term embeddings with subword information)
+	- POS encoding
+
+- Basic statistics for 
+	- Mean word length
+	- Variance of word length
+	- Punctuation count
+	- Word count
+	- Letter count
+	- N-Grams counts

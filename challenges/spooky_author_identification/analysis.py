@@ -41,10 +41,10 @@ train_df['author|categorical'].value_counts().plot.bar()
 plt.show()
 
 
-tokenizer = nltk.tokenize.TreebankWordTokenizer()
+tokenize = nltk.tokenize.TreebankWordTokenizer().tokenize
 
 train_df['words|object'] = (train_df['text|string']
-                     .apply(nltk.tokenize.TreebankWordTokenizer().tokenize)
+                     .apply(tokenize)
                      .apply(nltk.pos_tag)
                      # .apply(WordNetLemmatizer().lemmatize)
                      )
