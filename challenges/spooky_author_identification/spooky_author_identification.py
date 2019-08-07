@@ -22,7 +22,6 @@ def munge_features(df_train, df_test):
     # df['group_count|numerical'] = df.groupby('group_id|string')['group_id|string'].transform('count')
 
 
-
     required_cols = [
 
     ]
