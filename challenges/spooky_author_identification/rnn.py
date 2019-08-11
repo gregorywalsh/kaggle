@@ -124,7 +124,8 @@ df_pred[target_columns] = softmax(x=df_pred[target_columns], axis=1)
 df_pred['id'] = df_all['id']['test']
 df_pred[['id'] + target_columns].to_csv(path_or_buf='predictions/spooky_submission.csv', index=False)
 
-cross_val_score(estimator=clf, X=x_train.numpy(), y=y_train.numpy(), verbose=1, n_jobs=-1)
+# TODO: Fix scoring on cross val score and linear output
+cross_val_score(estimator=clf, X=x_train.numpy(), y=y_train.numpy(), verbose=1, n_jobs=-1, scoring='')
 
 
 ########################################################################################################################
