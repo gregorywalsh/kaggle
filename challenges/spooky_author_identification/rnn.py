@@ -1,12 +1,12 @@
+import gensim.utils
+import numpy as np
 import pandas as pd
 import re
-import gensim.utils
+import skorch
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
-from skorch import NeuralNetClassifier
-from skorch.dataset import CVSplit
-from sklearn.model_selection import train_test_split
+
+from sklearn.model_selection import cross_val_score
 
 # USER NEEDS
 # Train an RNN machine using glove embeddings and estimate performance of model
@@ -29,49 +29,50 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 # GET EMBEDDING AND INDEXES
-#   Load model
+#   Load embedding vectors
 filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
 keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
-embeddings = torch.FloatTensor(keyed_vectors.vectors)
 #   Load data
-train_df = pd.read_csv(filepath_or_buffer='data/train.csv', delimiter=',')
-test_df = pd.read_csv(filepath_or_buffer='data/test.csv', delimiter=',')
+df_train = pd.read_csv(filepath_or_buffer='data/train.csv', delimiter=',')
+df_test = pd.read_csv(filepath_or_buffer='data/test.csv', delimiter=',')
+df_all = pd.concat(objs=[df_train, df_test], axis=0, keys=['train', 'test'], sort=True)
 #   Tokenize text
-text_df = pd.concat(objs=[train_df['text'], test_df['text']], axis=0, keys=['train', 'test'])
-tokens_df = text_df.apply(func=lambda text: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", text))
+df_all['tokens'] = df_all['text'].apply(func=lambda text: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", text))
+#   Get embedding indexes
 get = keyed_vectors.vocab.get
-idxs_df = tokens_df.apply(func=lambda tokens: [get(token).index if get(token) else None for token in tokens])
-#   Print tokenization proportion
-unmatched_count = sum(idxs_df.apply(func=lambda idxs: idxs.count(None)))
-total_count = sum(idxs_df.apply(func=lambda idxs: len(idxs)))
+df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
+#   Print matched tokenization proportion
+unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
+total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
 print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
 #   Exclude unmatched tokens
-idxs_df = idxs_df.apply(func=lambda idxs: torch.LongTensor([idx for idx in idxs if idx]))
+df_all['idxs'] = df_all['idxs'].apply(
+    func=lambda xs: torch.tensor(data=[x for x in xs if x], dtype=torch.long, device=device)
+)
+#   Create minimal set of embeddings and clean up
+unique_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
+old_to_new_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_indexes)}
+sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_map.items(), key=lambda x: x[1])]
+embeddings = torch.tensor(data=np.take(keyed_vectors.vectors, [sorted_embedding_indexes], 0), dtype=torch.float16, device=device)
+# del keyed_vectors
+#   Reindex the tokens
+df_all['idxs'] = df_all['idxs'].apply(func=lambda xs: [old_to_new_map.get(x) for x in xs])
 #   Trim very long sequences
-idx_lens = idxs_df.apply(func=lambda idxs: len(idxs))
-len_nth_percentile = int(idx_lens.quantile(0.999))
-idxs_df = idxs_df.apply(func=lambda idxs: idxs[:len_nth_percentile])
-idx_lens = idx_lens.clip(upper=len_nth_percentile)
+df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
+len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
+df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
+df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
 
 
 # CREATE LOADERS
-#   Pad sequences and pack into batch first tensor
-x_train = pad_sequence(sequences=idxs_df['train'], padding_value=0, batch_first=True)  # Don't worry...
-x_test = pad_sequence(sequences=idxs_df['test'], padding_value=0, batch_first=True)  # ...padding will be deleted later
+#   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
+x_train = nn.utils.rnn.pad_sequence(sequences=df_all['idxs']['train'], padding_value=0, batch_first=True)
+x_test = nn.utils.rnn.pad_sequence(sequences=df_all['idxs']['test'], padding_value=0, batch_first=True)
 #   Append len information to x so it we can create a packed seq in forward method of net
-x_train = torch.cat(tensors=[x_train, torch.tensor(data=idx_lens['train']).view(-1, 1)], dim=1).to(device)
-x_test = torch.cat(tensors=[x_test, torch.LongTensor(idx_lens['test']).view(-1, 1)], dim=1).to(device)
+x_train = torch.cat(tensors=[x_train, torch.tensor(data=df_all['idx_lens']['train'], device=device).view(-1, 1)], dim=1)
+x_test = torch.cat(tensors=[x_test, torch.tensor(data=df_all['idx_lens']['test'], device=device).view(-1, 1)], dim=1)
 #   Create train target
-y_train = torch.tensor(data=pd.Categorical(train_df['author']).codes, dtype=torch.long, device=device)
-
-
-# # Pytorch train and test sets
-# train = torch.utils.data.TensorDataset(x_train, y_train)
-# test = torch.utils.data.TensorDataset(x_test)
-#
-# # data loader
-# train_loader = torch.utils.data.DataLoader(train, batch_size=BATCH_SIZE, shuffle=True)
-# test_loader = torch.utils.data.DataLoader(test, batch_size=BATCH_SIZE, shuffle=True)
+y_train = torch.tensor(data=pd.Categorical(df_train['author']).codes, dtype=torch.long, device=device)
 
 
 # DEFINE MODEL
@@ -87,64 +88,44 @@ class RNN(nn.Module):
         self.linear = nn.Linear(in_features=256 * self.num_directions, out_features=3)
 
     def forward(self, x):
-        # print(x.shape)
-        unpadded_lens = x[:, -1].clone().detach()
-        # print(unpadded_lens.shape)
+        seq_lens = x[:, -1].detach().to(device='cpu')
         x = self.embedding(x[:, :-1])
-        x = pack_padded_sequence(input=x, lengths=unpadded_lens, enforce_sorted=False, batch_first=True)
+        x = nn.utils.rnn.pack_padded_sequence(input=x, lengths=seq_lens, enforce_sorted=False, batch_first=True)
         _, h = self.recurrent(x)
-        # print(h.shape)
         if self.num_directions == 1 and self.num_layers == 1:
             h = h.view(BATCH_SIZE, -1)
         else:
             h = torch.transpose(h[::self.num_layers], 0, 1).contiguous().view(BATCH_SIZE, -1)  # Get act's of last layer
-        # print(h.shape)
         return self.linear(h)
 
 
 # CREATE CLF
-split = CVSplit(cv=5, stratified=False)
-clf = NeuralNetClassifier(
+split = skorch.dataset.CVSplit(cv=5, stratified=True)
+early_stopping = skorch.callbacks.EarlyStopping(
+    monitor='valid_loss',
+    patience=2,
+    threshold=0.01,
+    threshold_mode='rel',
+    lower_is_better=True,
+)
+clf = skorch.NeuralNetClassifier(
     module=RNN,
+    callbacks=[('early_stopping', early_stopping)],
     criterion=nn.CrossEntropyLoss,
     optimizer=torch.optim.Adam,
     train_split=split,
     iterator_train__shuffle=True,
-    iterator_train__batch_size=BATCH_SIZE,
-    verbose=2
+    iterator_train__drop_last=True,
+    iterator_valid__drop_last=True,
+    batch_size=BATCH_SIZE,
+    verbose=3
 )
 
-clf.fit(X=x_train, y=y_train)
+# clf.fit(X=x_train, y=y_train)
+cross_val_score(estimator=clf, X=x_train.numpy(), y=y_train.numpy(), verbose=1, n_jobs=-1)
 
 
-for epoch in range(2):  # loop over the dataset multiple times
-
-    running_loss = 0.0
-    for i, data in enumerate(trainloader, 0):
-        # get the inputs; data is a list of [inputs, labels]
-        inputs, labels = data
-
-        # zero the parameter gradients
-        optimizer.zero_grad()
-
-        # forward + backward + optimize
-        outputs = net(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-
-        # print statistics
-        running_loss += loss.item()
-        if i % 2000 == 1999:    # print every 2000 mini-batches
-            print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 2000))
-            running_loss = 0.0
-
-print('Finished Training')
-
-
-
-
+########################################################################################################################
 
 
 # pattern = re.compile('[\w\-]+')
