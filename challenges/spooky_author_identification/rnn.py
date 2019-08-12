@@ -6,42 +6,59 @@ import skorch
 import torch
 import torch.nn as nn
 
-from sklearn.model_selection import cross_val_score
+from sklearn.metrics import make_scorer, log_loss
+from sklearn.model_selection import cross_validate, train_test_split
+from skorch.helper import predefined_split
+from skorch.dataset import Dataset
 from scipy.special import softmax
 
 
 # PARAMS
-BATCH_SIZE = 64
+TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
 
 
 # SET THE DEVICE
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-# GET EMBEDDING AND INDEXES
+# LOAD EMBEDDINGS
 #   Load embedding vectors
 filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
 keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
+
+
+# LOAD DATA AND GET EMBEDDING INDEXES
 #   Load data
 df_train = pd.read_csv(filepath_or_buffer='data/train.csv', delimiter=',')
 df_test = pd.read_csv(filepath_or_buffer='data/test.csv', delimiter=',')
-df_all = pd.concat(objs=[df_train, df_test], axis=0, keys=['train', 'test'], sort=True)
+df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
+df_train.reset_index(drop=True, inplace=True)
+df_val.reset_index(drop=True, inplace=True)
+df_all = pd.concat(objs=[df_train, df_val, df_test], axis=0, keys=['train', 'val', 'test'], sort=True)
+df_all['author'] = pd.Categorical(df_all['author'], categories=TARGET_COLUMNS, ordered=True)
+
 #   Tokenize text
-df_all['tokens'] = df_all['text'].apply(func=lambda text: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", text))
+df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
+
 #   Get embedding indexes
 get = keyed_vectors.vocab.get
 df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
+
 #   Print matched tokenization proportion
 unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
 total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
 print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
+
 #   Exclude unmatched tokens
-df_all['idxs'] = df_all['idxs'].apply(func=lambda xs: [x for x in xs if x])
+df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: [idx for idx in idxs if idx])
+
 #   Trim very long seqs and store lengths for seq packing later
 df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
 len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
 df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
 df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
+df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
+
 #   Create minimal set of new embeddings and clean up
 unique_old_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
 old_to_new_idxs = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_old_indexes)}
@@ -49,24 +66,24 @@ sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_idxs.ite
 embeddings = torch.tensor(
     data=keyed_vectors.vectors[sorted_embedding_indexes, :], dtype=torch.float32, device=device
 )
-del keyed_vectors
+# del keyed_vectors
+
 #   Update the indexes to the new embedding and pack in a tensor
 df_all['idxs'] = df_all['idxs'].apply(
-    func=lambda xs: torch.tensor([old_to_new_idxs.get(x) for x in xs], dtype=torch.long, device=device)
+    func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
 )
 
 
 # CREATE LOADERS
 #   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
-x_train = nn.utils.rnn.pad_sequence(sequences=df_all['idxs']['train'], padding_value=0, batch_first=True)
-x_test = nn.utils.rnn.pad_sequence(sequences=df_all['idxs']['test'], padding_value=0, batch_first=True)
-#   Append len information to x so it we can create a packed seq in forward method of net
-x_train = torch.cat(tensors=[x_train, torch.tensor(data=df_all['idx_lens']['train'], device=device).view(-1, 1)], dim=1)
-x_test = torch.cat(tensors=[x_test, torch.tensor(data=df_all['idx_lens']['test'], device=device).view(-1, 1)], dim=1)
-#   Create train target
-target_columns = ["EAP", "HPL", "MWS"]
-df_all['author'] = pd.Categorical(df_all['author'], categories=target_columns, ordered=True)
-y_train = torch.tensor(data=df_all['author']['train'].codes, dtype=torch.long, device=device)
+xs = {}
+ys = {}
+for partition in ['train', 'val', 'test']:
+    xs[partition] = nn.utils.rnn.pad_sequence(sequences=df_all['idxs'][partition], padding_value=0, batch_first=True)
+    seq_lens = torch.tensor(data=df_all['idx_lens'][partition], device=device).view(-1, 1)
+    xs[partition] = torch.cat(tensors=[xs[partition], seq_lens], dim=1)
+for partition in ['train', 'val']:
+    ys[partition] = torch.tensor(data=df_all['author'][partition].cat.codes, dtype=torch.long, device=device)
 
 
 # DEFINE MODEL
@@ -76,7 +93,7 @@ class RNN(nn.Module):
         super().__init__()
         self.num_layers = 1
         self.num_directions = 1
-        self.hidden_size = 256
+        self.hidden_size = 128
         self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings)
         self.recurrent = nn.GRU(
             input_size=embeddings.shape[1], hidden_size=self.hidden_size, num_layers=self.num_layers,
@@ -100,32 +117,54 @@ split = skorch.dataset.CVSplit(cv=5, stratified=True)
 early_stopping = skorch.callbacks.EarlyStopping(
     monitor='valid_loss',
     patience=2,
-    threshold=0.01,
+    threshold=0,
     threshold_mode='rel',
     lower_is_better=True,
 )
 clf = skorch.NeuralNetClassifier(
     module=RNN,
+    device=device,
     callbacks=[('early_stopping', early_stopping)],
     criterion=nn.CrossEntropyLoss,
     optimizer=torch.optim.Adam,
-    train_split=split,
+    train_split=predefined_split(Dataset(X=xs['val'], y=ys['val'])),
     iterator_train__shuffle=True,
     iterator_train__drop_last=True,
     iterator_valid__drop_last=False,
-    iterator_train__batch_size=BATCH_SIZE,
+    iterator_train__batch_size=128,
     iterator_valid__batch_size=-1,  # use all examples
-    verbose=3
+    verbose=1
 )
 
-clf.fit(X=x_train, y=y_train)
-df_pred = pd.DataFrame(data=clf.predict_proba(X=x_test), columns=target_columns)
-df_pred[target_columns] = softmax(x=df_pred[target_columns], axis=1)
-df_pred['id'] = df_all['id']['test']
-df_pred[['id'] + target_columns].to_csv(path_or_buf='predictions/spooky_submission.csv', index=False)
 
-# TODO: Fix scoring on cross val score and linear output
-cross_val_score(estimator=clf, X=x_train.numpy(), y=y_train.numpy(), verbose=1, n_jobs=-1, scoring='')
+# FIT MODEL
+clf.fit(X=xs['train'], y=ys['train'])
+
+
+# WRITE OUT PREDICTIONS TO FILE
+df_pred = pd.DataFrame(data=clf.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
+df_pred[TARGET_COLUMNS] = softmax(x=df_pred[TARGET_COLUMNS], axis=1)
+df_pred['id'] = df_all['id']['test']
+df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='predictions/spooky_submission.csv', index=False)
+
+
+# CROSS VALIDATE
+def negative_log_loss(y_true, y_pred_raw):
+    y_pred = softmax(x=y_pred_raw, axis=1)
+    return log_loss(y_true=y_true, y_pred=y_pred)
+
+
+nll_scorer = make_scorer(score_func=negative_log_loss, greater_is_better=False, needs_proba=True)
+
+cv = cross_validate(
+    estimator=clf,
+    X=xs['train'].numpy(),
+    y=ys['train'].numpy(),
+    cv=3,
+    scoring={'log loss': nll_scorer, 'accuracy': 'accuracy'},
+    verbose=0,
+    n_jobs=1,
+)
 
 
 ########################################################################################################################
