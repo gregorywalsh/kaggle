@@ -8,14 +8,15 @@ import torch.nn as nn
 
 from sklearn.metrics import make_scorer, log_loss
 from sklearn.model_selection import cross_validate, train_test_split
+from sklearn.base import clone
 from skorch.helper import predefined_split
 from skorch.dataset import Dataset
 from scipy.special import softmax
-
+from temperature_scaling import ModelWithTemperature
+from torch.utils.data import DataLoader
 
 # PARAMS
 TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
-
 
 # SET THE DEVICE
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -32,8 +33,8 @@ keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, 
 df_train = pd.read_csv(filepath_or_buffer='data/train.csv', delimiter=',')
 df_test = pd.read_csv(filepath_or_buffer='data/test.csv', delimiter=',')
 df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
-df_train.reset_index(drop=True, inplace=True)
-df_val.reset_index(drop=True, inplace=True)
+for df in [df_train, df_val]:
+    df.reset_index(drop=True, inplace=True)
 df_all = pd.concat(objs=[df_train, df_val, df_test], axis=0, keys=['train', 'val', 'test'], sort=True)
 df_all['author'] = pd.Categorical(df_all['author'], categories=TARGET_COLUMNS, ordered=True)
 
@@ -42,7 +43,7 @@ df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'
 
 #   Get embedding indexes
 get = keyed_vectors.vocab.get
-df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
+df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else t for t in ts])
 
 #   Print matched tokenization proportion
 unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
@@ -121,13 +122,14 @@ early_stopping = skorch.callbacks.EarlyStopping(
     threshold_mode='rel',
     lower_is_better=True,
 )
+val_dataset = Dataset(X=xs['val'], y=ys['val'])
 clf = skorch.NeuralNetClassifier(
     module=RNN,
     device=device,
     callbacks=[('early_stopping', early_stopping)],
     criterion=nn.CrossEntropyLoss,
     optimizer=torch.optim.Adam,
-    train_split=predefined_split(Dataset(X=xs['val'], y=ys['val'])),
+    train_split=predefined_split(val_dataset),
     iterator_train__shuffle=True,
     iterator_train__drop_last=True,
     iterator_valid__drop_last=False,
@@ -140,9 +142,15 @@ clf = skorch.NeuralNetClassifier(
 # FIT MODEL
 clf.fit(X=xs['train'], y=ys['train'])
 
+# CALIBRATE PROBABILITIES
+clf_clone = clone(clf)
+cal_model = ModelWithTemperature(model=clf_clone.module_, device=device)
+val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, drop_last=True)
+cal_model.set_temperature(valid_loader=val_loader)
+clf_clone.model_ = cal_model
 
 # WRITE OUT PREDICTIONS TO FILE
-df_pred = pd.DataFrame(data=clf.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
+df_pred = pd.DataFrame(data=clf_clone.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
 df_pred[TARGET_COLUMNS] = softmax(x=df_pred[TARGET_COLUMNS], axis=1)
 df_pred['id'] = df_all['id']['test']
 df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='predictions/spooky_submission.csv', index=False)
@@ -151,7 +159,7 @@ df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='predictions/spooky_submissi
 # CROSS VALIDATE
 def negative_log_loss(y_true, y_pred_raw):
     y_pred = softmax(x=y_pred_raw, axis=1)
-    return log_loss(y_true=y_true, y_pred=y_pred)
+    return -log_loss(y_true=y_true, y_pred=y_pred)
 
 
 nll_scorer = make_scorer(score_func=negative_log_loss, greater_is_better=False, needs_proba=True)
@@ -162,7 +170,7 @@ cv = cross_validate(
     y=ys['train'].numpy(),
     cv=3,
     scoring={'log loss': nll_scorer, 'accuracy': 'accuracy'},
-    verbose=0,
+    verbose=1,
     n_jobs=1,
 )
 
