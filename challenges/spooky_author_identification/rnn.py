@@ -14,9 +14,11 @@ from skorch.dataset import Dataset
 from scipy.special import softmax
 from temperature_scaling import ModelWithTemperature
 from torch.utils.data import DataLoader
+from util import csv_to_df
 
 # PARAMS
 TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
+CHALLENGE = 'spooky_author_identification'
 
 # SET THE DEVICE
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -30,8 +32,17 @@ keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, 
 
 # LOAD DATA AND GET EMBEDDING INDEXES
 #   Load data
-df_train = pd.read_csv(filepath_or_buffer='data/train.csv', delimiter=',')
-df_test = pd.read_csv(filepath_or_buffer='data/test.csv', delimiter=',')
+df_train = csv_to_df(
+    config_fp='challenges/{}/data/config.yml'.format(CHALLENGE),
+    data_fp='challenges/{}/data/train.csv'.format(CHALLENGE),
+    is_test=False,
+    num_rows=100
+)
+df_test = csv_to_df(
+    config_fp='challenges/{}/data/config.yml'.format(CHALLENGE),
+    data_fp='challenges/{}/data/test.csv'.format(CHALLENGE),
+    is_test=True,
+)
 df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
 for df in [df_train, df_val]:
     df.reset_index(drop=True, inplace=True)
