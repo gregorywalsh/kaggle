@@ -137,7 +137,7 @@ checkpoint = skorch.callbacks.Checkpoint(
 )
 early_stopping = skorch.callbacks.EarlyStopping(
     monitor='valid_loss',
-    patience=2,
+    patience=1,
     threshold=0,
     threshold_mode='rel',
     lower_is_better=True,
