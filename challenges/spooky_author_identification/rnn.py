@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 # PARAMS
 TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
-CHALLENGE = 'spooky_author_identification'
+CHALLENGE = 'challenges/spooky_author_identification/'
 
 # SET THE DEVICE
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -33,15 +33,15 @@ keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, 
 
 # LOAD DATA AND GET EMBEDDING INDEXES
 #   Load data
-data_reader = DataReader(config_fp='challenges/{}/data/config.yml'.format(CHALLENGE))
+data_reader = DataReader(config_fp='{}/data/config.yml'.format(CHALLENGE))
 df_train = data_reader.load_from_csv(
-    fp='challenges/{}/data/train.csv'.format(CHALLENGE),
+    fp='{}/data/train.csv'.format(CHALLENGE),
     validate_col_names=True,
     is_test=False,
     append_vartype=False
 )
 df_test = data_reader.load_from_csv(
-    fp='challenges/{}/data/test.csv'.format(CHALLENGE),
+    fp='{}/data/test.csv'.format(CHALLENGE),
     validate_col_names=True,
     is_test=True,
     append_vartype=False
@@ -57,7 +57,7 @@ df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'
 
 #   Get embedding indexes
 get = keyed_vectors.vocab.get
-df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else t for t in ts])
+df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
 
 #   Print matched tokenization proportion
 unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
@@ -109,10 +109,11 @@ class RNN(nn.Module):
         self.num_layers = 1
         self.num_directions = 1
         self.hidden_size = 128
+        self.dropout = 0
         self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings)
         self.recurrent = nn.GRU(
             input_size=embeddings.shape[1], hidden_size=self.hidden_size, num_layers=self.num_layers,
-            bidirectional=self.num_directions == 2, batch_first=True
+            bidirectional=self.num_directions == 2, batch_first=True, dropout=self.dropout
         )
         self.linear = nn.Linear(in_features=self.hidden_size * self.num_directions, out_features=3)
 
@@ -129,6 +130,11 @@ class RNN(nn.Module):
 
 # CREATE CLF
 split = skorch.dataset.CVSplit(cv=5, stratified=True)
+checkpoint = skorch.callbacks.Checkpoint(
+    monitor='valid_loss_best',
+    f_params='params.pt',
+    dirname='{c}/models/rnn/'.format(c=CHALLENGE)
+)
 early_stopping = skorch.callbacks.EarlyStopping(
     monitor='valid_loss',
     patience=2,
@@ -140,7 +146,7 @@ val_dataset = Dataset(X=xs['val'], y=ys['val'])
 clf = skorch.NeuralNetClassifier(
     module=RNN,
     device=device,
-    callbacks=[('early_stopping', early_stopping)],
+    callbacks=[('early_stopping', early_stopping), ('checkpoint', checkpoint)],
     criterion=nn.CrossEntropyLoss,
     optimizer=torch.optim.Adam,
     train_split=predefined_split(val_dataset),
@@ -155,19 +161,22 @@ clf = skorch.NeuralNetClassifier(
 
 # FIT MODEL
 clf.fit(X=xs['train'], y=ys['train'])
+clf.initialize()
+clf.load_params('{c}/models/rnn/params.pt'.format(c=CHALLENGE))
+
 
 # CALIBRATE PROBABILITIES
 clf_clone = clone(clf)
 cal_model = ModelWithTemperature(model=clf_clone.module_, device=device)
 val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, drop_last=True)
-cal_model.set_temperature(valid_loader=val_loader)
-clf_clone.model_ = cal_model
+clf_clone.module_ = cal_model.set_temperature(valid_loader=val_loader)
+
 
 # WRITE OUT PREDICTIONS TO FILE
 df_pred = pd.DataFrame(data=clf_clone.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
 df_pred[TARGET_COLUMNS] = softmax(x=df_pred[TARGET_COLUMNS], axis=1)
 df_pred['id'] = df_all['id']['test']
-df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='predictions/spooky_submission.csv', index=False)
+df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='{c}/predictions/submission_temp.csv'.format(c=CHALLENGE), index=False)
 
 
 # CROSS VALIDATE
