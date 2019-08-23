@@ -1,0 +1,4 @@
+data/*
+!data/config.yml
+predictions/*
+hypotheses/*
