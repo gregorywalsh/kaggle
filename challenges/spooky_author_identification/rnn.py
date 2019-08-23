@@ -6,6 +6,7 @@ import skorch
 import torch
 import torch.nn as nn
 
+from datareader import DataReader
 from sklearn.metrics import make_scorer, log_loss
 from sklearn.model_selection import cross_validate, train_test_split
 from sklearn.base import clone
@@ -14,7 +15,7 @@ from skorch.dataset import Dataset
 from scipy.special import softmax
 from temperature_scaling import ModelWithTemperature
 from torch.utils.data import DataLoader
-from util import csv_to_df
+
 
 # PARAMS
 TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
@@ -32,16 +33,18 @@ keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, 
 
 # LOAD DATA AND GET EMBEDDING INDEXES
 #   Load data
-df_train = csv_to_df(
-    config_fp='challenges/{}/data/config.yml'.format(CHALLENGE),
-    data_fp='challenges/{}/data/train.csv'.format(CHALLENGE),
+data_reader = DataReader(config_fp='challenges/{}/data/config.yml'.format(CHALLENGE))
+df_train = data_reader.load_from_csv(
+    fp='challenges/{}/data/train.csv'.format(CHALLENGE),
+    validate_col_names=True,
     is_test=False,
-    num_rows=100
+    append_vartype=False
 )
-df_test = csv_to_df(
-    config_fp='challenges/{}/data/config.yml'.format(CHALLENGE),
-    data_fp='challenges/{}/data/test.csv'.format(CHALLENGE),
+df_test = data_reader.load_from_csv(
+    fp='challenges/{}/data/test.csv'.format(CHALLENGE),
+    validate_col_names=True,
     is_test=True,
+    append_vartype=False
 )
 df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
 for df in [df_train, df_val]:

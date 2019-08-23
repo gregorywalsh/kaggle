@@ -17,13 +17,13 @@ column_defns:
     friendly_name: passenger_id
     vartype: unique
     group: meta
-    load: True
+    required: True
 
   - name: Survived
     friendly_name: survived
     vartype: numerical
     group: target
-    load: True
+    required: True
 
   - name: Pclass
     friendly_name: class
@@ -33,58 +33,58 @@ column_defns:
       - 2
       - 1
     group: feature
-    load: True
+    required: True
 
   - name: Name
     friendly_name: name
     vartype: unique
     group: feature
-    load: True
+    required: True
 
   - name: Sex
     friendly_name: sex
     vartype: binary
     group: feature
-    load: True
+    required: True
 
   - name: Age
     friendly_name: age
     vartype: numerical
     group: feature
-    load: True
+    required: True
 
   - name: SibSp
     friendly_name: num_sib_spouses
     vartype: numerical
     group: feature
-    load: True
+    required: True
 
   - name: Parch
     friendly_name: num_parents_children
     vartype: numerical
     group: feature
-    load: True
+    required: True
 
   - name: Ticket
     friendly_name: ticket_id
     vartype: string
     group: feature
-    load: True
+    required: True
 
   - name: Fare
     friendly_name: fare
     vartype: numerical
     group: feature
-    load: True
+    required: True
 
   - name: Cabin
     friendly_name: cabin_id
     vartype: string
     group: feature
-    load: True
+    required: True
 
   - name: Embarked
     friendly_name: port_embarked
     vartype: categorical
     group: feature
-    load: True
+    required: True

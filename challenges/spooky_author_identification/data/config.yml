@@ -18,14 +18,14 @@ column_defns:
   - name: id
     vartype: unique
     group: meta
-    load: True
+    required: True
 
   - name: text
     vartype: string
     group: feature
-    load: True
+    required: True
 
   - name: author
     vartype: categorical
     group: target
-    load: True
+    required: True
