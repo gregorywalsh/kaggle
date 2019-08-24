@@ -2,7 +2,7 @@ import numpy as np
 import importlib
 from argparse import ArgumentParser
 from dataset import Dataset
-from hypotheses import load_hypothesis
+from hypothesis import load_hypothesis
 from util import print_title, load_yaml_config
 
 

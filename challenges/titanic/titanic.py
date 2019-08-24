@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from hypotheses import RandomForrestClassifierHypothesis, LightGBMClassifierHypothesis
+from hypothesis import RandomForrestClassifierHypothesis, LightGBMClassifierHypothesis
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
@@ -159,8 +159,8 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
     }
 
     rf = RandomForrestClassifierHypothesis(
-        dataset=train,
-        transformer=transformer,
+        x=train,
+        cv_transformer=transformer,
         hyper_searcher_strategy=RandomizedSearchCV,
         hyper_searcher_kwargs=hyper_searcher_kwargs,
         additional_hyper_dists={},
@@ -171,8 +171,8 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
     # LIGHTGBM  CLASSIFIER
     # ==================================================================================================================
     lgb = LightGBMClassifierHypothesis(
-        dataset=train,
-        transformer=transformer,
+        x=train,
+        cv_transformer=transformer,
         hyper_searcher_strategy=RandomizedSearchCV,
         hyper_searcher_kwargs=hyper_searcher_kwargs,
         additional_hyper_dists={},

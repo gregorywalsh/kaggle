@@ -2,7 +2,7 @@ import importlib
 from time import time
 from argparse import ArgumentParser
 from dataset import Dataset
-from hypotheses import save_hypothesis
+from hypothesis import save_hypothesis
 from util import print_title, process_cv_results, save_cv_results
 
 
