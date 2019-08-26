@@ -11,24 +11,26 @@ from torch import nn
 
 class RNN(NNHypothesis):
 
-    def __init__(self, hyper_search_strat, hyper_search_kwargs):
+    def __init__(self, hyper_search_strat, hyper_search_kwargs, net_kwargs, directory):
         super().__init__(
             mode='classification',
             module=GRUVarLenSeq,
             use_gpu=True,
-            checkpoint_dir='challenges/spooky_author_identification/checkpoints',
+            checkpoint_dir='{}/checkpoints'.format(directory),
             hyper_search_strat=hyper_search_strat,
             hyper_search_kwargs=hyper_search_kwargs,
             transformer=None,
-            additional_hyper_dists=None
+            additional_hyper_dists=None,
+            net_kwargs=net_kwargs
         )
 
-    def preprocess(self, df_train, df_test, keyed_vectors, device):
+    def preprocess(self, x_train, x_test, y_train):
         #   Combine dataframes
-        df_all = pd.concat(objs=[df_train, df_test], axis=0, keys=['train', 'test'], sort=True)
-        df_all['author'] = pd.Categorical(df_all['author'], categories=["EAP", "HPL", "MWS"], ordered=True)
+        df_train = pd.concat(objs=[x_train, y_train], axis=1)
+        df_all = pd.concat(objs=[df_train, x_test], axis=0, keys=['train', 'test'], sort=True)
+        df_all['author|categorical'] = pd.Categorical(df_all['author|categorical'], categories=["EAP", "HPL", "MWS"], ordered=True)
         #   Tokenize text
-        df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
+        df_all['tokens'] = df_all['text|string'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
         #   Get embedding indexes
         get = keyed_vectors.vocab.get
         df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
@@ -59,7 +61,7 @@ class RNN(NNHypothesis):
             func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
         )
         # CREATE LOADERS
-        df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
+        df_train, df_val = train_test_split(df_train, stratify=df_train['author|categorical'], test_size=0.2)
         for df in [df_train, df_val]:
             df.reset_index(drop=True, inplace=True)
         #   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
@@ -70,4 +72,4 @@ class RNN(NNHypothesis):
             seq_lens = torch.tensor(data=df_all['idx_lens'][partition], device=device).view(-1, 1)
             xs[partition] = torch.cat(tensors=[xs[partition], seq_lens], dim=1)
         for partition in ['train', 'val']:
-            ys[partition] = torch.tensor(data=df_all['author'][partition].cat.codes, dtype=torch.long, device=device)
+            ys[partition] = torch.tensor(data=df_all['author|categorical'][partition].cat.codes, dtype=torch.long, device=device)

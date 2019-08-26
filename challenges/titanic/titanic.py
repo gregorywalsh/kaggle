@@ -173,8 +173,8 @@ def get_hypotheses(train, hyper_searcher_kwargs, cv_folds, cv_repeats):
     lgb = LightGBMClassifierHypothesis(
         x=train,
         transformer=transformer,
-        hyper_searcher_strat=RandomizedSearchCV,
-        hyper_searcher_kwargs=hyper_searcher_kwargs,
+        hyper_search_strat=RandomizedSearchCV,
+        hyper_search_kwargs=hyper_searcher_kwargs,
         additional_hyper_dists={},
         n_trees=256
     )

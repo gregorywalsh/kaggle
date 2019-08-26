@@ -9,7 +9,7 @@ from sklearn.base import clone
 from scipy.special import softmax
 from temperature_scaling import ModelWithTemperature
 from torch.utils.data import DataLoader
-
+from torch.nn import CrossEntropyLoss
 
 # PARAMS
 DIR = 'challenges/spooky_author_identification'
@@ -26,15 +26,16 @@ df_train = data_reader.load_from_csv(
     fp='{}/data/train.csv'.format(DIR),
     validate_col_names=True,
     is_test=False,
-    append_vartype=False
+    append_vartype=True
 )
 df_test = data_reader.load_from_csv(
     fp='{}/data/test.csv'.format(DIR),
     validate_col_names=True,
     is_test=True,
-    append_vartype=False
+    append_vartype=True
 )
 
+# DEFINE HYPOTHESES
 hyper_search_strat = RandomizedSearchCV
 hyper_search_kwargs = {
     'cv': RepeatedStratifiedKFold(n_splits=cv_splits, n_repeats=cv_repeats),
@@ -42,20 +43,34 @@ hyper_search_kwargs = {
     'error_score': 'raise',
     'refit': True
 }
+net_kwargs = {
+    "mode": 'classification',
+    "embedding": 20,
+    "num_rec_layers": 1,
+    "num_directions": 1,
+    "hidden_size": 128,
+    "dropout": 0
+}
 hypotheses = [
-    hyps.RNN(
+    ('rnn', hyps.RNN(
         hyper_search_strat=hyper_search_strat,
         hyper_search_kwargs=hyper_search_kwargs,
-    )
+        net_kwargs=net_kwargs,
+        directory=DIR
+    ))
 ]
 
+# BUILD AND RUN EXPERIMENT
 experiment = Experiment(
-    x_train=df_train,
-    x_test=df_test,
-    y_train=y_train,
+    x_train=df_train[['id|unique', 'text|string']],
+    x_test=df_test[['id|unique', 'text|string']],
+    y_train=df_train['author|categorical'],
     hypotheses=hypotheses
 )
-
+experiment.run(
+    num_hyper_samples=2,
+    directory=DIR
+)
 
 # FIT MODEL
 clf.fit(X=xs['train'], y=ys['train'])
@@ -78,9 +93,9 @@ df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='{c}/predictions/submission_
 
 
 # CROSS VALIDATE
-def negative_log_loss(y_true, y_pred_raw):
-    y_pred = softmax(x=y_pred_raw, axis=1)
-    return -log_loss(y_true=y_true, y_pred=y_pred)
+def negative_log_loss(y_true, y_pred_logits):
+    log_loss = torch.CrossEntroyLoss()
+    return log_loss(torch.tensor(y_true), torch.long(y_pred_logits))
 
 
 nll_scorer = make_scorer(score_func=negative_log_loss, greater_is_better=False, needs_proba=True)

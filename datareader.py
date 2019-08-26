@@ -10,8 +10,6 @@ PANDAS_DTYPE_MAP = {
     'binary': 'category',
     'bool': 'boolean',
     'categorical': 'category',
-    'categorical_low': 'category',
-    'categorical_hi': 'category',
     'ordinal': pd.api.types.CategoricalDtype,
     'numerical': 'float64',
 }
