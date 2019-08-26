@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 
-class RNNVarSeq(nn.Module):
+class GRUVarLenSeq(nn.Module):
 
-    def __init__(self, embedding, num_layers, num_directions, hidden_size, dropout):
+    def __init__(self, mode, embedding, num_layers, num_directions, hidden_size, dropout):
         super().__init__()
         self.embedding = embedding
         self.num_layers = num_layers
@@ -21,7 +21,12 @@ class RNNVarSeq(nn.Module):
             input_size=self.embeddings.shape[1], hidden_size=self.hidden_size, num_layers=self.num_layers,
             bidirectional=self.num_directions == 2, batch_first=True, dropout=self.dropout
         )
-        self.linear = nn.Linear(in_features=self.hidden_size * self.num_directions, out_features=3)
+        if mode == 'classification':
+            self.linear = nn.Linear(in_features=self.hidden_size * self.num_directions, out_features=3)
+        elif mode == 'regression':
+            self.linear = nn.Linear(in_features=self.hidden_size * self.num_directions, out_features=3)
+        else:
+            raise ValueError('"mode" must be one of {"classification", "regression"}')
 
     def forward(self, x):
         seq_lens = x[:, -1].detach().to(device='cpu')

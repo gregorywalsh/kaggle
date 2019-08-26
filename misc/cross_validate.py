@@ -32,7 +32,7 @@ print('Done')
 
 print_title('LOADING HYPOTHESIS AND TRAINING DATA')
 print('Challenge {c}, run id {r}\n'.format(c=args.challenge, r=args.run_id))
-hypothesis = load_hypothesis(path='challenges/{c}/hypotheses/{r}.dump'.format(c=args.challenge, r=args.run_id),)
+hypothesis = load_hypothesis(path='challenges/{c}/saved_hypotheses/{r}.dump'.format(c=args.challenge, r=args.run_id),)
 train = Dataset(
     config_fp='challenges/{}/data/config.yml'.format(args.challenge),
     data_fp='challenges/{}/data/train.csv'.format(args.challenge),

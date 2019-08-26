@@ -29,15 +29,13 @@ def get_feature_count(dataset, pipeline):
 
 class AbstractHypothesis:
 
-    def __init__(self, estimator, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None):
+    def __init__(self, estimator, hyper_searcher_strat, hyper_searcher_kwargs,
+                 transformer=None, additional_hyper_dists=None):
         self._estimator = estimator
-        self._x_preprocessor = x_preprocessor
-        self._y_preprocessor = y_preprocessor
-        self._cv_transformer = cv_transformer
+        self._transformer = transformer
         self.model = self.build_model()
         hyper_searcher_kwargs['param_distributions'] = {**self._basic_hyper_dists(), **additional_hyper_dists}
-        self.hyper_searcher = hyper_searcher_strategy(estimator=self.model, **hyper_searcher_kwargs)
+        self.hyper_searcher = hyper_searcher_strat(estimator=self.model, **hyper_searcher_kwargs)
         self.training_is_stochastic = self.is_trained_stochastically()
         self.best_model = None
         self.best_hyperparams = None
@@ -45,16 +43,13 @@ class AbstractHypothesis:
 
     def build_model(self):
         steps = []
-        if self._cv_transformer:
-            steps.append(('transformer', self._cv_transformer))
+        if self._transformer:
+            steps.append(('transformer', self._transformer))
         steps.append(('estimator', self._estimator))
         return Pipeline(steps=steps)
 
-    def preprocess_x(self, x_train, x_test):
-        return self._x_preprocessor(x_train=x_train, x_test=x_test) if self._x_preprocessor else (x_train, x_test)
-
-    def preprocess_y(self, y_train):
-        return self._y_preprocessor(y_train=y_train) if self._y_preprocessor else y_train
+    def preprocess(self, df_train, df_test, **kwargs):
+        raise NotImplementedError
 
     def is_trained_stochastically(self):
         raise NotImplementedError
@@ -68,15 +63,6 @@ class AbstractHypothesis:
     def _basic_hyper_dists(self):
         raise NotImplementedError
 
-    def __getstate__(self):
-        # Copy the object's state from self.__dict__ which contains
-        # all our instance attributes. Always use the dict.copy()
-        # method to avoid modifying the original state.
-        state = self.__dict__.copy()
-        # Remove the unpicklable entries.
-        del state['dataset']
-        return state
-
     # TODO
     # @staticmethod
     # def write_training_report(folder, run_id, machine):
@@ -88,18 +74,26 @@ class AbstractHypothesis:
 
 class RandomForestHypothesis(AbstractHypothesis):
 
-    def __init__(self, x, estimator, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None):
+    def __init__(self, x, mode, hyper_searcher_strat, hyper_searcher_kwargs,
+                 n_trees=200, preprocessor=None, y_preprocessor=None,
+                 transformer=None, additional_hyper_dists=None):
+        if mode == 'classification':
+            estimator_class = RandomForestClassifier
+        elif mode == 'regression':
+            estimator_class = RandomForestRegressor
+        else:
+            raise ValueError('"mode" must be one of {"classification", "regression"}')
         super().__init__(
-            estimator=estimator,
-            hyper_searcher_strategy=hyper_searcher_strategy,
+            estimator=estimator_class(n_jobs=1, bootstrap=True, n_estimators=n_trees),
+            hyper_searcher_strat=hyper_searcher_strat,
             hyper_searcher_kwargs=hyper_searcher_kwargs,
-            x_preprocessor=x_preprocessor,
-            y_preprocessor=y_preprocessor,
-            cv_transformer=cv_transformer,
+            transformer=transformer,
             additional_hyper_dists=additional_hyper_dists
         )
         self.x = x
+
+    def preprocess(self, df_train, df_test, **kwargs):
+        raise NotImplementedError
 
     def is_trained_stochastically(self):
         # RF training is stochastic due to bagging of training data and features per tree
@@ -110,8 +104,9 @@ class RandomForestHypothesis(AbstractHypothesis):
         return True
 
     def _basic_hyper_dists(self):
-
-        x = self._x_preprocessor(self.x) if self._x_preprocessor else self.x
+        raise NotImplementedError
+        # TODO fix this
+        x = self.preprocess(df_train, df_test) if self._preprocessor else df_train, df_test
         steps = []
         if self._cv_transformer:
             steps.append(('cv_transformer', self._cv_transformer))
@@ -128,54 +123,23 @@ class RandomForestHypothesis(AbstractHypothesis):
         return dist
 
 
-class RandomForrestClassifierHypothesis(RandomForestHypothesis):
-
-    def __init__(self, x, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None, n_trees=200):
-        super().__init__(
-            x=x,
-            estimator=RandomForestClassifier(n_jobs=1, bootstrap=True, n_estimators=n_trees),
-            hyper_searcher_strategy=hyper_searcher_strategy,
-            hyper_searcher_kwargs=hyper_searcher_kwargs,
-            x_preprocessor=x_preprocessor,
-            y_preprocessor=y_preprocessor,
-            cv_transformer=cv_transformer,
-            additional_hyper_dists=additional_hyper_dists
-        )
-
-
-class RandomForrestRegressorHypothesis(RandomForestHypothesis):
-
-    def __init__(self, x, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None, n_trees=200):
-        super().__init__(
-            x=x,
-            estimator=RandomForestRegressor(n_jobs=1, bootstrap=True, n_estimators=n_trees),
-            hyper_searcher_strategy=hyper_searcher_strategy,
-            hyper_searcher_kwargs=hyper_searcher_kwargs,
-            x_preprocessor=x_preprocessor,
-            y_preprocessor=y_preprocessor,
-            cv_transformer=cv_transformer,
-            additional_hyper_dists=additional_hyper_dists
-        )
-
-
 class LogisticRegressionHypothesis(AbstractHypothesis):
 
-    def __init__(self, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None,
-                 penalty=None, solver=None, tol=None, max_iter=None):
+    def __init__(self, hyper_searcher_strat, hyper_searcher_kwargs, penalty=None,
+                 solver=None, tol=None, max_iter=None, preprocessor=None,
+                 transformer=None, additional_hyper_dists=None):
         self.solver = solver
         self.penalty = penalty
         super().__init__(
             estimator=LogisticRegression(penalty=penalty, solver=solver, tol=tol, max_iter=max_iter),
-            hyper_searcher_strategy=hyper_searcher_strategy,
+            hyper_searcher_strat=hyper_searcher_strat,
             hyper_searcher_kwargs=hyper_searcher_kwargs,
-            x_preprocessor=x_preprocessor,
-            y_preprocessor=y_preprocessor,
-            cv_transformer=cv_transformer,
+            transformer=transformer,
             additional_hyper_dists=additional_hyper_dists
         )
+
+    def preprocess(self, df_train, df_test, **kwargs):
+        raise NotImplementedError
 
     def is_trained_stochastically(self):
         # RF training is stochastic due to bagging of training data and features per tree
@@ -196,18 +160,19 @@ class LogisticRegressionHypothesis(AbstractHypothesis):
 
 class LightGBMClassifierHypothesis(AbstractHypothesis):
 
-    def __init__(self, x, hyper_searcher_strategy, hyper_searcher_kwargs, x_preprocessor=None,
-                 y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None, n_trees=512):
+    def __init__(self, x, hyper_searcher_strat, hyper_searcher_kwargs, n_trees=512,
+                 preprocessor=None, transformer=None, additional_hyper_dists=None):
         super().__init__(
             estimator=LGBMClassifier(n_estimators=n_trees),
-            hyper_searcher_strategy=hyper_searcher_strategy,
+            hyper_searcher_strat=hyper_searcher_strat,
             hyper_searcher_kwargs=hyper_searcher_kwargs,
-            x_preprocessor=x_preprocessor,
-            y_preprocessor=y_preprocessor,
-            cv_transformer=cv_transformer,
+            transformer=transformer,
             additional_hyper_dists=additional_hyper_dists
         )
         self.x = x
+
+    def preprocess(self, df_train, df_test, **kwargs):
+        raise NotImplementedError
 
     def is_trained_stochastically(self):
         # RF training is stochastic due to bagging of training data and features per tree
@@ -228,13 +193,17 @@ class LightGBMClassifierHypothesis(AbstractHypothesis):
 
 class NNHypothesis(AbstractHypothesis):
 
-    def __init__(self, module, val_dataset, use_gpu, hyper_searcher_strategy, hyper_searcher_kwargs,
-                 x_preprocessor=None, y_preprocessor=None, cv_transformer=None, additional_hyper_dists=None):
-
+    def __init__(self, mode, module, use_gpu, checkpoint_dir, hyper_search_strat,
+                 hyper_search_kwargs, transformer=None, additional_hyper_dists=None):
+        if mode == 'classification':
+            estimator_class = skorch.NeuralNetClassifier
+        elif mode == 'regression':
+            estimator_class = skorch.NeuralNetRegressor
+        else:
+            raise ValueError('"mode" must be one of {"classification", "regression"}')
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() and use_gpu else "cpu")
         checkpoint = skorch.callbacks.Checkpoint(
-            monitor='valid_loss_best',
-            f_params='nn_params.pt',
-            dirname='challenges/spooky_author_identification/checkpoints'
+            monitor='valid_loss_best', f_params='nn_params.pt', dirname=checkpoint_dir
         )
         early_stopping = skorch.callbacks.EarlyStopping(
             monitor='valid_loss',
@@ -243,13 +212,13 @@ class NNHypothesis(AbstractHypothesis):
             threshold_mode='rel',
             lower_is_better=True,
         )
-        estimator = skorch.NeuralNetClassifier(
+        estimator = estimator_class(
             module=module,
-            device=torch.device("cuda:0" if torch.cuda.is_available() and use_gpu else "cpu"),
+            device=self.device,
             callbacks=[('early_stopping', early_stopping), ('checkpoint', checkpoint)],
             criterion=nn.CrossEntropyLoss,
             optimizer=torch.optim.Adam,
-            train_split=predefined_split(val_dataset),
+            train_split=5,
             iterator_train__shuffle=True,
             iterator_train__drop_last=True,
             iterator_valid__drop_last=False,
@@ -257,10 +226,16 @@ class NNHypothesis(AbstractHypothesis):
             iterator_valid__batch_size=-1,  # use all examples
             verbose=1
         )
-        super().__init__(estimator=estimator, hyper_searcher_strategy=hyper_searcher_strategy,
-                         hyper_searcher_kwargs=hyper_searcher_kwargs, x_preprocessor=x_preprocessor,
-                         y_preprocessor=y_preprocessor, cv_transformer=cv_transformer,
-                         additional_hyper_dists=additional_hyper_dists)
+        super().__init__(
+            estimator=estimator,
+            hyper_searcher_strat=hyper_search_strat,
+            hyper_searcher_kwargs=hyper_search_kwargs,
+            transformer=transformer,
+            additional_hyper_dists=additional_hyper_dists
+        )
+
+    def preprocess(self, df_train, df_test, **kwargs):
+        raise NotImplementedError
 
     def is_trained_stochastically(self):
         # RF training is stochastic due to SGD and random initialization of model

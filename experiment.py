@@ -9,18 +9,17 @@ REPORTING_KEYS = ('run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hy
 class Experiment:
     """
     Define an experiment and run it to evaluate one or more
-    hypotheses, record performance and return the
+    saved_hypotheses, record performance and return the
     best performing machine from each hypothesis
     """
 
-    def __init__(self, datareader, x_train, x_test, y_train, hypotheses):
-        self.datareader = datareader
+    def __init__(self, x_train, x_test, y_train, hypotheses):
         self.x_train = x_train
         self.x_test = x_test
         self.y_train = y_train
         self.hypotheses = hypotheses
 
-    def run(self, num_hyper_samples, cv_folds, cv_repeats, reporting_dir, best_machine_dir,
+    def run(self, num_hyper_samples, reporting_dir, best_machine_dir,
             cv_reporting_keys=REPORTING_KEYS, report_limit=5):
         run_time = int(time())
         hyper_searcher_kwargs = {
@@ -44,8 +43,8 @@ class Experiment:
                 run_id=run_time,
                 hypothesis_name=hypothesis_name,
                 cv_results=hyper_searcher.cv_results_,
-                cv_folds=cv_folds,
-                cv_repeats=cv_repeats,
+                cv_folds=hypothesis.hyper_searcher.cv.folds,
+                cv_repeats=hypothesis.hyper_searcher.cv.repeats,
                 num_hyp_samples=num_hyper_samples
             )
             save_cv_results(
@@ -55,6 +54,6 @@ class Experiment:
                 reporting_keys=cv_reporting_keys
             )
             hypothesis.save(
-                path='{d}/hypotheses/{h}_{r}.dump'.format(d=best_machine_dir, r=run_time, h=hypothesis_name)
+                path='{d}/saved_hypotheses/{h}_{r}.dump'.format(d=best_machine_dir, r=run_time, h=hypothesis_name)
             )
             # TODO: PRINT RESULTS FOR TOP ARGS.REPORT_N MODELS

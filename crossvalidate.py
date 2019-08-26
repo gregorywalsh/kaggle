@@ -119,7 +119,7 @@ for hypothesis_name, hypothesis in hypotheses.items():
         reporting_keys=REPORTING_KEYS
     )
     save_hypothesis(
-        path='challenges/{c}/hypotheses/{h}_{r}.dump'.format(c=args.challenge, r=run_time, h=hypothesis_name),
+        path='challenges/{c}/saved_hypotheses/{h}_{r}.dump'.format(c=args.challenge, r=run_time, h=hypothesis_name),
         hypothesis=hypothesis
     )
     # TODO: PRINT RESULTS FOR TOP ARGS.REPORT_N MODELS

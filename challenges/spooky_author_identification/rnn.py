@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 
 # PARAMS
 TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
-CHALLENGE = 'challenges/spooky_author_identification/'
+WD = 'challenges/spooky_author_identification/'
 
 # SET THE DEVICE
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -33,136 +33,24 @@ keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, 
 
 # LOAD DATA AND GET EMBEDDING INDEXES
 #   Load data
-data_reader = DataReader(config_fp='{}/data/config.yml'.format(CHALLENGE))
+data_reader = DataReader(config_fp='{}/data/config.yml'.format(WD))
 df_train = data_reader.load_from_csv(
-    fp='{}/data/train.csv'.format(CHALLENGE),
+    fp='{}/data/train.csv'.format(WD),
     validate_col_names=True,
     is_test=False,
     append_vartype=False
 )
 df_test = data_reader.load_from_csv(
-    fp='{}/data/test.csv'.format(CHALLENGE),
+    fp='{}/data/test.csv'.format(WD),
     validate_col_names=True,
     is_test=True,
     append_vartype=False
 )
-df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
-for df in [df_train, df_val]:
-    df.reset_index(drop=True, inplace=True)
-df_all = pd.concat(objs=[df_train, df_val, df_test], axis=0, keys=['train', 'val', 'test'], sort=True)
-df_all['author'] = pd.Categorical(df_all['author'], categories=TARGET_COLUMNS, ordered=True)
-
-#   Tokenize text
-df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
-
-#   Get embedding indexes
-get = keyed_vectors.vocab.get
-df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
-
-#   Print matched tokenization proportion
-unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
-total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
-print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
-
-#   Exclude unmatched tokens
-df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: [idx for idx in idxs if idx])
-
-#   Trim very long seqs and store lengths for seq packing later
-df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
-len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
-df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
-df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
-df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
-
-#   Create minimal set of new embeddings and clean up
-unique_old_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
-old_to_new_idxs = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_old_indexes)}
-sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_idxs.items(), key=operator.itemgetter(1))]
-embeddings = torch.tensor(
-    data=keyed_vectors.vectors[sorted_embedding_indexes, :], dtype=torch.float32, device=device
-)
-# del keyed_vectors
-
-#   Update the indexes to the new embedding and pack in a tensor
-df_all['idxs'] = df_all['idxs'].apply(
-    func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
-)
-
-
-# CREATE LOADERS
-#   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
-xs = {}
-ys = {}
-for partition in ['train', 'val', 'test']:
-    xs[partition] = nn.utils.rnn.pad_sequence(sequences=df_all['idxs'][partition], padding_value=0, batch_first=True)
-    seq_lens = torch.tensor(data=df_all['idx_lens'][partition], device=device).view(-1, 1)
-    xs[partition] = torch.cat(tensors=[xs[partition], seq_lens], dim=1)
-for partition in ['train', 'val']:
-    ys[partition] = torch.tensor(data=df_all['author'][partition].cat.codes, dtype=torch.long, device=device)
-
-
-# DEFINE MODEL
-class RNN(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-        self.num_layers = 1
-        self.num_directions = 1
-        self.hidden_size = 128
-        self.dropout = 0
-        self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings)
-        self.recurrent = nn.GRU(
-            input_size=embeddings.shape[1], hidden_size=self.hidden_size, num_layers=self.num_layers,
-            bidirectional=self.num_directions == 2, batch_first=True, dropout=self.dropout
-        )
-        self.linear = nn.Linear(in_features=self.hidden_size * self.num_directions, out_features=3)
-
-    def forward(self, x):
-        seq_lens = x[:, -1].detach().to(device='cpu')
-        x = self.embedding(x[:, :-1])
-        x = nn.utils.rnn.pack_padded_sequence(input=x, lengths=seq_lens, enforce_sorted=False, batch_first=True)
-        _, h = self.recurrent(x)
-        if self.num_directions != 1 or self.num_layers != 1:
-            h = torch.transpose(h[::self.num_layers], 0, 1).contiguous()
-        h = h.view(-1, self.hidden_size * self.num_directions)
-        return self.linear(h)
-
-
-# CREATE CLF
-split = skorch.dataset.CVSplit(cv=5, stratified=True)
-checkpoint = skorch.callbacks.Checkpoint(
-    monitor='valid_loss_best',
-    f_params='params.pt',
-    dirname='{c}/models/rnn/'.format(c=CHALLENGE)
-)
-early_stopping = skorch.callbacks.EarlyStopping(
-    monitor='valid_loss',
-    patience=1,
-    threshold=0,
-    threshold_mode='rel',
-    lower_is_better=True,
-)
-val_dataset = Dataset(X=xs['val'], y=ys['val'])
-clf = skorch.NeuralNetClassifier(
-    module=RNN,
-    device=device,
-    callbacks=[('early_stopping', early_stopping), ('checkpoint', checkpoint)],
-    criterion=nn.CrossEntropyLoss,
-    optimizer=torch.optim.Adam,
-    train_split=predefined_split(val_dataset),
-    iterator_train__shuffle=True,
-    iterator_train__drop_last=True,
-    iterator_valid__drop_last=False,
-    iterator_train__batch_size=128,
-    iterator_valid__batch_size=-1,  # use all examples
-    verbose=1
-)
-
 
 # FIT MODEL
 clf.fit(X=xs['train'], y=ys['train'])
 clf.initialize()
-clf.load_params('{c}/models/rnn/params.pt'.format(c=CHALLENGE))
+clf.load_params('{c}/models/rnn/params.pt'.format(c=WD))
 
 
 # CALIBRATE PROBABILITIES
@@ -176,7 +64,7 @@ clf_clone.module_ = cal_model.set_temperature(valid_loader=val_loader)
 df_pred = pd.DataFrame(data=clf_clone.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
 df_pred[TARGET_COLUMNS] = softmax(x=df_pred[TARGET_COLUMNS], axis=1)
 df_pred['id'] = df_all['id']['test']
-df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='{c}/predictions/submission_temp.csv'.format(c=CHALLENGE), index=False)
+df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='{c}/predictions/submission_temp.csv'.format(c=WD), index=False)
 
 
 # CROSS VALIDATE

@@ -12,20 +12,20 @@ def cross_validate(nested, features, target, hypothesis, scoring, num_folds, cv_
     return
 
 # # print_title("EVALUATING TRAINING VARIANCE FOR HYPOTHESES WITH NON-DETERMINISTIC TRAINING")
-# # for hypothesis_name, hypothesis in hypotheses:
+# # for hypothesis_name, hypothesis in saved_hypotheses:
 # #     if hypothesis.is_trained_stochastically():
 # #         # TODO implement: evaluate_training_variance(hypothesis)
 # #         pass
 # #
 # # print_title('GETTING BEST STACKED MODELS')
-# # if len(hypotheses) == 1:
+# # if len(saved_hypotheses) == 1:
 # #     print('Training {m} machines for 1 hypothesis for {k} folds. Total: {t}.'.format(
 # #         m=args.num_hyp_samp_by_hypoth, k=args.num_folds, t=args.num_hyp_samp_by_hypoth * args.num_folds)
 # #     )
 # # else:
-# #     print('Training {m} machines for each of {c} hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
-# #         m=args.num_hyp_samp_by_hypoth, c=len(hypotheses), k=args.num_folds,
-# #         t=args.num_hyp_samp_by_hypoth * len(hypotheses) * args.num_folds ** 2
+# #     print('Training {m} machines for each of {c} saved_hypotheses for {k} inner and {k} outer folds. Total: {t}.'.format(
+# #         m=args.num_hyp_samp_by_hypoth, c=len(saved_hypotheses), k=args.num_folds,
+# #         t=args.num_hyp_samp_by_hypoth * len(saved_hypotheses) * args.num_folds ** 2
 # #     ))
 # # best_machine = None
 # # best_rand_search_kwargs = {
