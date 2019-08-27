@@ -9,7 +9,7 @@ REPORTING_KEYS = ('run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hy
 class Experiment:
     """
     Define an experiment and run it to evaluate one or more
-    saved_hypotheses, record performance and return the
+    hypotheses, record performance and return the
     best performing machine from each hypothesis
     """
 
@@ -32,7 +32,7 @@ class Experiment:
             x_train, x_test, y_train = hypothesis.preprocess(
                 x_train=self.x_train,
                 x_test=self.x_test,
-                y_test=self.y_train
+                y_train=self.y_train
             )
             hyper_searcher = hypothesis.hyper_searcher
             hyper_searcher.set_params(**hyper_searcher_kwargs)

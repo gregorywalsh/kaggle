@@ -1,75 +1,101 @@
-import pandas as pd
-import re
 import torch
+import torch.nn as nn
 
-from hypothesis import NNHypothesis
-from operator import itemgetter
-from nets import GRUVarLenSeq
-from sklearn.model_selection import train_test_split
-from torch import nn
+from hypothesis import AbstractNNHypothesis
+from nets import RNN, MeanEmbedding
+from torch.utils.data import TensorDataset
 
 
-class RNN(NNHypothesis):
+def generate_batch(batch):
+    seq_tensors = [torch.tensor(o[0][0], dtype=torch.long) for o in batch]
+    padded_idxs = nn.utils.rnn.pad_sequence(seq_tensors, batch_first=True, padding_value=0)
+    seq_lens = torch.tensor([o[0][1] for o in batch], dtype=torch.long)
+    y = torch.tensor([o[1] for o in batch], dtype=torch.long)
+    x = {'idxs': padded_idxs, 'seq_lens': seq_lens}
+    return x, y
 
-    def __init__(self, hyper_search_strat, hyper_search_kwargs, net_kwargs, directory):
+
+class RNNHypothesis(AbstractNNHypothesis):
+
+    def __init__(self, hyper_search_strat, hyper_search_kwargs, embeddings, device):
+
         super().__init__(
             mode='classification',
-            module=GRUVarLenSeq,
-            use_gpu=True,
-            checkpoint_dir='{}/checkpoints'.format(directory),
+            module=RNN,
+            device=device,
             hyper_search_strat=hyper_search_strat,
             hyper_search_kwargs=hyper_search_kwargs,
+            val_fraction=0.2,
+            module_kwargs={
+                'embeddings': embeddings,
+                'freeze_embedding': False,
+                'recurrent_depth': 1,
+                'recurrent_directions': 1,
+                'recurrent_features': 256,
+                'fc_hidden_features': 256,
+                'fc_hidden_depth': 1,
+                'out_features': 3,
+                'dropout': 0.5
+            },
+            iter_train_kwargs={
+                'collate_fn': generate_batch,
+                'batch_size': 128,
+                'shuffle': True,
+                'drop_last': True,
+            },
+            iter_valid_kwargs={
+                'collate_fn': generate_batch,
+                'batch_size': -1,
+                'shuffle': False,
+                'drop_last': False,
+            },
             transformer=None,
             additional_hyper_dists=None,
-            net_kwargs=net_kwargs
         )
 
     def preprocess(self, x_train, x_test, y_train):
-        #   Combine dataframes
-        df_train = pd.concat(objs=[x_train, y_train], axis=1)
-        df_all = pd.concat(objs=[df_train, x_test], axis=0, keys=['train', 'test'], sort=True)
-        df_all['author|categorical'] = pd.Categorical(df_all['author|categorical'], categories=["EAP", "HPL", "MWS"], ordered=True)
-        #   Tokenize text
-        df_all['tokens'] = df_all['text|string'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
-        #   Get embedding indexes
-        get = keyed_vectors.vocab.get
-        df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
-        #   Print matched tokenization proportion
-        unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
-        total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
-        print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
-        #   Exclude unmatched tokens
-        df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: [idx for idx in idxs if idx])
-        #   Trim very long seqs and store lengths for seq packing later
-        df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
-        len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
-        df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
-        df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
-        df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
+        x_train = x_train[['idxs', 'idx_lens']].values
+        x_test = x_test[['idxs', 'idx_lens']].values
+        y_train = y_train.cat.codes.values
+        return x_train, x_test, y_train
 
-        #   Create minimal set of new embeddings and clean up
-        unique_old_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
-        old_to_new_idxs = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_old_indexes)}
-        sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_idxs.items(), key=itemgetter(1))]
-        embeddings = torch.tensor(
-            data=keyed_vectors.vectors[sorted_embedding_indexes, :], dtype=torch.float32, device=device
-        )
-        # del keyed_vectors
+    def generate_batch(self, batch):
+        seq_tensors = [torch.tensor(o[0]['idxs'][0], dtype=torch.long, device=self._estimator.device) for o in batch]
+        idxs = nn.utils.rnn.pad_sequence(seq_tensors, batch_first=True, padding_value=0).to(self._estimator.device)
+        lens = torch.tensor([o[0]['idx_lens'] for o in batch], dtype=torch.long).view(-1, 1)
+        labels = torch.tensor([o[1] for o in batch], dtype=torch.long)
+        return idxs, lens, labels
 
-        #   Update the indexes to the new embedding and pack in a tensor
-        df_all['idxs'] = df_all['idxs'].apply(
-            func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
+
+class MeanEmbeddingHypothesis(AbstractNNHypothesis):
+
+    @staticmethod
+    def generate_batch(batch):
+        label = torch.tensor([entry[0] for entry in batch])
+        text = [entry[1] for entry in batch]
+        offsets = [0] + [len(entry) for entry in text]
+        offsets = torch.tensor(offsets[:-1]).cumsum(dim=0)
+        text = torch.cat(text)
+        return text, offsets, label
+
+    def __init__(self, hyper_search_strat, hyper_search_kwargs, module_kwargs, device):
+        super().__init__(
+            mode='classification',
+            module=MeanEmbedding,
+            device=device,
+            hyper_search_strat=hyper_search_strat,
+            hyper_search_kwargs=hyper_search_kwargs,
+            module_kwargs=module_kwargs,
+            transformer=None,
+            additional_hyper_dists=None,
         )
-        # CREATE LOADERS
-        df_train, df_val = train_test_split(df_train, stratify=df_train['author|categorical'], test_size=0.2)
-        for df in [df_train, df_val]:
-            df.reset_index(drop=True, inplace=True)
-        #   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
-        xs = {}
-        ys = {}
-        for partition in ['train', 'val', 'test']:
-            xs[partition] = nn.utils.rnn.pad_sequence(sequences=df_all['idxs'][partition], padding_value=0, batch_first=True)
-            seq_lens = torch.tensor(data=df_all['idx_lens'][partition], device=device).view(-1, 1)
-            xs[partition] = torch.cat(tensors=[xs[partition], seq_lens], dim=1)
-        for partition in ['train', 'val']:
-            ys[partition] = torch.tensor(data=df_all['author|categorical'][partition].cat.codes, dtype=torch.long, device=device)
+
+    def preprocess(self, x_train, x_test, y_train):
+        x_train = x_train[['idxs', 'idx_lens']]
+        x_test = x_test[['idxs', 'idx_lens']]
+        y_train = torch.tensor(
+            data=y_train['author|categorical'].cat.codes,
+            dtype=torch.long,
+            device=self._estimator.device.device
+        )
+        return x_train, x_test, y_train

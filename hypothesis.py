@@ -6,14 +6,16 @@ import torch.nn as nn
 
 from abc import ABC, abstractmethod
 from distributions import loguniform
+from functools import partial
 from joblib import load, dump
 from lightgbm.sklearn import LGBMClassifier
 from scipy.stats import uniform, binom, randint
+from skorch.dataset import CVSplit
 from sklearn.base import clone as clone_estimator
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from skorch.helper import predefined_split
 
 
 def load_hypothesis(path):
@@ -79,7 +81,7 @@ class AbstractHypothesis(ABC):
     #     pass
 
 
-class RandomForestHypothesis(AbstractHypothesis, ABC):
+class AbstractRandomForestHypothesis(AbstractHypothesis, ABC):
 
     def __init__(self, x, mode, hyper_search_strat, hyper_search_kwargs,
                  n_trees=200, preprocessor=None, y_preprocessor=None,
@@ -127,7 +129,7 @@ class RandomForestHypothesis(AbstractHypothesis, ABC):
     #     return dist
 
 
-class LogisticRegressionHypothesis(AbstractHypothesis, ABC):
+class AbstractLogisticRegressionHypothesis(AbstractHypothesis, ABC):
 
     def __init__(self, hyper_search_strat, hyper_search_kwargs, penalty=None,
                  solver=None, tol=None, max_iter=None, preprocessor=None,
@@ -163,7 +165,7 @@ class LogisticRegressionHypothesis(AbstractHypothesis, ABC):
     #     return dist
 
 
-class LightGBMClassifierHypothesis(AbstractHypothesis, ABC):
+class AbstractLightGBMClassifierHypothesis(AbstractHypothesis, ABC):
 
     def __init__(self, x, hyper_search_strat, hyper_search_kwargs, n_trees=512,
                  preprocessor=None, transformer=None, additional_hyper_dists=None):
@@ -197,43 +199,44 @@ class LightGBMClassifierHypothesis(AbstractHypothesis, ABC):
     #     return dist
 
 
-class NNHypothesis(AbstractHypothesis, ABC):
+class AbstractNNHypothesis(AbstractHypothesis, ABC):
 
-    def __init__(self, mode, module, use_gpu, checkpoint_dir, hyper_search_strat, hyper_search_kwargs,
-                 net_kwargs=None, transformer=None, additional_hyper_dists=None):
+    def __init__(self, mode, module, device, hyper_search_strat, hyper_search_kwargs, val_fraction=0.2,
+                 patience=3, module_kwargs=None, iter_train_kwargs=None, iter_valid_kwargs=None,
+                 transformer=None, additional_hyper_dists=None):
+
         if mode == 'classification':
             estimator_class = skorchlogit.LogitNeuralNetClassifier
+            criterion = nn.CrossEntropyLoss
         elif mode == 'regression':
             estimator_class = skorch.NeuralNetRegressor
+            criterion = nn.MSELoss
         else:
             raise ValueError('"mode" must be one of {"classification", "regression"}')
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() and use_gpu else "cpu")
-        checkpoint = skorch.callbacks.Checkpoint(
-            monitor='valid_loss_best', f_params='nn_params.pt', dirname=checkpoint_dir
-        )
         early_stopping = skorch.callbacks.EarlyStopping(
             monitor='valid_loss',
-            patience=1,
-            threshold=0,
+            patience=patience,
+            threshold=0.001,
             threshold_mode='rel',
             lower_is_better=True,
         )
-        net_kwargs = {"module__" + key: val for key, val in net_kwargs.items()}
+        module_kwargs = {"module__" + k: v for k, v in module_kwargs.items()} if module_kwargs else {}
+        iter_train_kwargs = {"iterator_train__" + k: v for k, v in iter_train_kwargs.items()} if iter_train_kwargs else {}
+        iter_valid_kwargs = {"iterator_valid__" + k: v for k, v in iter_valid_kwargs.items()} if iter_valid_kwargs else {}
+
         estimator = estimator_class(
             module=module,
-            device=self.device,
-            callbacks=[('early_stopping', early_stopping), ('checkpoint', checkpoint)],
-            criterion=nn.CrossEntropyLoss,
+            device=device,
+            callbacks=[('early_stopping', early_stopping)],
+            criterion=criterion,
             optimizer=torch.optim.Adam,
-            train_split=5,
-            iterator_train__shuffle=True,
-            iterator_train__drop_last=True,
-            iterator_valid__drop_last=False,
-            iterator_train__batch_size=128,
-            iterator_valid__batch_size=-1,  # use all examples
+            train_split=skorch.dataset.CVSplit(cv=val_fraction, stratified=True),
             verbose=1,
-            **net_kwargs,
+            **iter_train_kwargs,
+            **iter_valid_kwargs,
+            **module_kwargs,
         )
+
         super().__init__(
             estimator=estimator,
             hyper_search_strat=hyper_search_strat,
