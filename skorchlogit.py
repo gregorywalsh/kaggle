@@ -54,7 +54,7 @@ class LogitNeuralNetClassifier(NeuralNetClassifier):
 
         self.partial_fit(X, y, **fit_params)
         self.load_params(
-            checkpoint=self._default_callbacks[3][1]  # Checkpoint callback from list of tuples
+            checkpoint=self._default_callbacks[4][1]  # Default checkpoint callback from list of tuples
         )
         return self
 

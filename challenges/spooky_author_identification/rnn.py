@@ -1,5 +1,6 @@
 import gensim.utils
 import operator
+import pickle
 import pandas as pd
 import re
 import skorch
@@ -25,69 +26,76 @@ CHALLENGE = 'challenges/spooky_author_identification/'
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-# LOAD EMBEDDINGS
-#   Load embedding vectors
-filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
-keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
+# # LOAD EMBEDDINGS
+# #   Load embedding vectors
+# filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
+# keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
+#
+#
+# # LOAD DATA AND GET EMBEDDING INDEXES
+# #   Load data
+# data_reader = DataReader(config_fp='{}/data/config.yml'.format(CHALLENGE))
+# df_train = data_reader.load_from_csv(
+#     fp='{}/data/train.csv'.format(CHALLENGE),
+#     validate_col_names=True,
+#     is_test=False,
+#     append_vartype=False
+# )
+# df_test = data_reader.load_from_csv(
+#     fp='{}/data/test.csv'.format(CHALLENGE),
+#     validate_col_names=True,
+#     is_test=True,
+#     append_vartype=False
+# )
+# df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
+# for df in [df_train, df_val]:
+#     df.reset_index(drop=True, inplace=True)
+# df_all = pd.concat(objs=[df_train, df_val, df_test], axis=0, keys=['train', 'val', 'test'], sort=True)
+# df_all['author'] = pd.Categorical(df_all['author'], categories=TARGET_COLUMNS, ordered=True)
+#
+# #   Tokenize text
+# df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
+#
+# #   Get embedding indexes
+# get = keyed_vectors.vocab.get
+# df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
+#
+# #   Print matched tokenization proportion
+# unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
+# total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
+# print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
+#
+# #   Exclude unmatched tokens
+# df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: [idx for idx in idxs if idx])
+#
+# #   Trim very long seqs and store lengths for seq packing later
+# df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
+# len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
+# df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
+# df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
+# df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
+#
+# #   Create minimal set of new embeddings and clean up
+# unique_old_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
+# old_to_new_idxs = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_old_indexes)}
+# sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_idxs.items(), key=operator.itemgetter(1))]
+# minimal_keyed_vectors = torch.tensor(
+#     data=keyed_vectors.vectors[sorted_embedding_indexes, :], dtype=torch.float32, device=device
+# )
+# # del keyed_vectors
+#
+# #   Update the indexes to the new embedding and pack in a tensor
+# df_all['idxs'] = df_all['idxs'].apply(
+#     func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
+# )
+#
+# # Save processed data
+# pickle.dump(df_all, open('df_all.pkl', 'wb'))
+# pickle.dump(minimal_keyed_vectors, open('minimal_keyed_vectors.pkl', 'wb'))
 
-
-# LOAD DATA AND GET EMBEDDING INDEXES
-#   Load data
-data_reader = DataReader(config_fp='{}/data/config.yml'.format(CHALLENGE))
-df_train = data_reader.load_from_csv(
-    fp='{}/data/train.csv'.format(CHALLENGE),
-    validate_col_names=True,
-    is_test=False,
-    append_vartype=False
-)
-df_test = data_reader.load_from_csv(
-    fp='{}/data/test.csv'.format(CHALLENGE),
-    validate_col_names=True,
-    is_test=True,
-    append_vartype=False
-)
-df_train, df_val = train_test_split(df_train, stratify=df_train['author'], test_size=0.2)
-for df in [df_train, df_val]:
-    df.reset_index(drop=True, inplace=True)
-df_all = pd.concat(objs=[df_train, df_val, df_test], axis=0, keys=['train', 'val', 'test'], sort=True)
-df_all['author'] = pd.Categorical(df_all['author'], categories=TARGET_COLUMNS, ordered=True)
-
-#   Tokenize text
-df_all['tokens'] = df_all['text'].apply(func=lambda t: re.findall(r"[A-Za-z\-]+'[A-Za-z]+|[A-Za-z]+", t))
-
-#   Get embedding indexes
-get = keyed_vectors.vocab.get
-df_all['idxs'] = df_all['tokens'].apply(func=lambda ts: [get(t).index if get(t) else None for t in ts])
-
-#   Print matched tokenization proportion
-unmatched_count = sum(df_all['idxs'].apply(func=lambda idxs: idxs.count(None)))
-total_count = sum(df_all['idxs'].apply(func=lambda idxs: len(idxs)))
-print('{f} of words matched'.format(f=(total_count - unmatched_count) / total_count))
-
-#   Exclude unmatched tokens
-df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: [idx for idx in idxs if idx])
-
-#   Trim very long seqs and store lengths for seq packing later
-df_all['idx_lens'] = df_all['idxs'].apply(func=lambda idxs: len(idxs))
-len_nth_percentile = int(df_all['idx_lens'].quantile(0.999))
-df_all['idxs'] = df_all['idxs'].apply(func=lambda idxs: idxs[:len_nth_percentile])
-df_all['idx_lens'] = df_all['idx_lens'].clip(upper=len_nth_percentile)
-df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
-
-#   Create minimal set of new embeddings and clean up
-unique_old_indexes = list(set(idx for sample in df_all['idxs'] for idx in sample))
-old_to_new_idxs = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_old_indexes)}
-sorted_embedding_indexes = [old_idx for old_idx, _ in sorted(old_to_new_idxs.items(), key=operator.itemgetter(1))]
-minimal_keyed_vectors = torch.tensor(
-    data=keyed_vectors.vectors[sorted_embedding_indexes, :], dtype=torch.float32, device=device
-)
-# del keyed_vectors
-
-#   Update the indexes to the new embedding and pack in a tensor
-df_all['idxs'] = df_all['idxs'].apply(
-    func=lambda idxs: torch.tensor([old_to_new_idxs.get(idx) for idx in idxs], dtype=torch.long, device=device)
-)
-
+#   Load the processed data
+df_all = pickle.load(open('df_all.pkl', 'rb'))
+minimal_keyed_vectors = pickle.load(open('minimal_keyed_vectors.pkl', 'rb'))
 
 # CREATE LOADERS
 #   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)

@@ -232,6 +232,7 @@ class AbstractNNHypothesis(AbstractHypothesis, ABC):
             optimizer=torch.optim.Adam,
             train_split=skorch.dataset.CVSplit(cv=val_fraction, stratified=True),
             verbose=1,
+            max_epochs=1,
             **iter_train_kwargs,
             **iter_valid_kwargs,
             **module_kwargs,

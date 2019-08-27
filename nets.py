@@ -30,17 +30,20 @@ class RNN(nn.Module):
         super().__init__()
         if recurrent_directions not in (1, 2):
             raise ValueError('Valid values for arg "directions" are {1, 2}')
+        self.recurrent_depth = recurrent_depth
+        self.recurrent_directions = recurrent_directions
+        self.recurrent_features = recurrent_features
         self.embedding = nn.Embedding.from_pretrained(embeddings=embeddings, freeze=freeze_embedding)
         self.recurrent = nn.GRU(
             input_size=self.embedding.embedding_dim,
             hidden_size=recurrent_features,
             num_layers=recurrent_depth,
-            bidirectional=recurrent_directions,
+            bidirectional=self.recurrent_directions == 2,
             batch_first=True,
             dropout=dropout if recurrent_depth > 1 else 0
         )
         self.out = MLP(
-            in_features=recurrent_features * recurrent_directions,
+            in_features=recurrent_features * self.recurrent_directions,
             hidden_features=fc_hidden_features,
             hidden_depth=fc_hidden_depth,
             out_features=out_features,
@@ -51,7 +54,7 @@ class RNN(nn.Module):
         x = self.embedding(idxs)
         x = nn.utils.rnn.pack_padded_sequence(input=x, lengths=seq_lens, batch_first=True, enforce_sorted=False)
         _, h = self.recurrent(x)
-        if self.recurrent_directions != 1 or self.num_rec_layers != 1:
+        if self.recurrent_directions != 1 or self.recurrent_depth != 1:
             h = torch.transpose(h[::self.num_rec_layers], 0, 1).contiguous()  # Flatten and transpose to batch first
         h = h.view(-1, self.recurrent_features * self.recurrent_directions)
         x = self.out(h)
