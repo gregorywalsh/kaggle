@@ -29,7 +29,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # # LOAD EMBEDDINGS
 # #   Load embedding vectors
 # filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
-# keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
+# keyed_vectors = gensim.checkpoint.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
 #
 #
 # # LOAD DATA AND GET EMBEDDING INDEXES
@@ -96,6 +96,10 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #   Load the processed data
 df_all = pickle.load(open('df_all.pkl', 'rb'))
 minimal_keyed_vectors = pickle.load(open('minimal_keyed_vectors.pkl', 'rb'))
+df_all['idxs'] = df_all['idxs'].apply(
+    func=lambda idxs: torch.tensor(idxs, dtype=torch.long, device=device)
+)
+df_all['idx_lens'] = df_all['idx_lens'].apply(lambda l: torch.tensor(data=l, device=device).view(-1, 1))
 
 # CREATE LOADERS
 #   Pad sequences to allow batch embedding (padding deleted in 'forward()' before recurrent layer)
@@ -106,7 +110,7 @@ for partition in ['train', 'val', 'test']:
     seq_lens = torch.tensor(data=df_all['idx_lens'][partition], device=device).view(-1, 1)
     xs[partition] = torch.cat(tensors=[xs[partition], seq_lens], dim=1)
 for partition in ['train', 'val']:
-    ys[partition] = torch.tensor(data=df_all['author'][partition].cat.codes, dtype=torch.long, device=device)
+    ys[partition] = torch.tensor(data=df_all['author|categorical'][partition].cat.codes, dtype=torch.long, device=device)
 
 
 # DEFINE MODEL
@@ -118,7 +122,7 @@ class RNN(nn.Module):
         self.num_directions = 1
         self.hidden_size = 128
         self.dropout = 0
-        self.embedding = nn.Embedding.from_pretrained(embeddings=minimal_keyed_vectors)
+        self.embedding = nn.Embedding.from_pretrained(embeddings=minimal_keyed_vectors, freeze=False)
         self.recurrent = nn.GRU(
             input_size=minimal_keyed_vectors.shape[1], hidden_size=self.hidden_size, num_layers=self.num_layers,
             bidirectional=self.num_directions == 2, batch_first=True, dropout=self.dropout
@@ -141,7 +145,7 @@ split = skorch.dataset.CVSplit(cv=5, stratified=True)
 checkpoint = skorch.callbacks.Checkpoint(
     monitor='valid_loss_best',
     f_params='params.pt',
-    dirname='{c}/models/rnn/'.format(c=CHALLENGE)
+    dirname='{c}/checkpoint/rnn/'.format(c=CHALLENGE)
 )
 early_stopping = skorch.callbacks.EarlyStopping(
     monitor='valid_loss',
@@ -170,40 +174,40 @@ clf = skorch.NeuralNetClassifier(
 # FIT MODEL
 clf.fit(X=xs['train'], y=ys['train'])
 clf.initialize()
-clf.load_params('{c}/models/rnn/params.pt'.format(c=CHALLENGE))
+clf.load_params('challenges/spooky_author_identification/checkpoint/params.pt'.format(c=CHALLENGE))
 
 
-# CALIBRATE PROBABILITIES
-clf_clone = clone(clf)
-cal_model = ModelWithTemperature(model=clf_clone.module_, device=device)
-val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, drop_last=True)
-clf_clone.module_ = cal_model.set_temperature(valid_loader=val_loader)
+# # CALIBRATE PROBABILITIES
+# clf_clone = clone(clf)
+# cal_model = ModelWithTemperature(model=clf_clone.module_, device=device)
+# val_loader = DataLoader(val_dataset, batch_size=128, shuffle=True, drop_last=True)
+# clf_clone.module_ = cal_model.set_temperature(valid_loader=val_loader)
 
 
 # WRITE OUT PREDICTIONS TO FILE
-df_pred = pd.DataFrame(data=clf_clone.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
+df_pred = pd.DataFrame(data=clf.predict_proba(X=xs['test']), columns=TARGET_COLUMNS)
 df_pred[TARGET_COLUMNS] = softmax(x=df_pred[TARGET_COLUMNS], axis=1)
-df_pred['id'] = df_all['id']['test']
+df_pred['id'] = df_all['id|unique']['test']
 df_pred[['id'] + TARGET_COLUMNS].to_csv(path_or_buf='{c}/predictions/submission_temp.csv'.format(c=CHALLENGE), index=False)
 
-
-# CROSS VALIDATE
-def negative_log_loss(y_true, y_pred_raw):
-    y_pred = softmax(x=y_pred_raw, axis=1)
-    return -log_loss(y_true=y_true, y_pred=y_pred)
-
-
-nll_scorer = make_scorer(score_func=negative_log_loss, greater_is_better=False, needs_proba=True)
-
-cv = cross_validate(
-    estimator=clf,
-    X=xs['train'].numpy(),
-    y=ys['train'].numpy(),
-    cv=3,
-    scoring={'log loss': nll_scorer, 'accuracy': 'accuracy'},
-    verbose=1,
-    n_jobs=1,
-)
+#
+# # CROSS VALIDATE
+# def negative_log_loss(y_true, y_pred_raw):
+#     y_pred = softmax(x=y_pred_raw, axis=1)
+#     return -log_loss(y_true=y_true, y_pred=y_pred)
+#
+#
+# nll_scorer = make_scorer(score_func=negative_log_loss, greater_is_better=False, needs_proba=True)
+#
+# cv = cross_validate(
+#     estimator=clf,
+#     X=xs['train'].numpy(),
+#     y=ys['train'].numpy(),
+#     cv=3,
+#     scoring={'log loss': nll_scorer, 'accuracy': 'accuracy'},
+#     verbose=1,
+#     n_jobs=1,
+# )
 
 
 ########################################################################################################################
@@ -236,7 +240,7 @@ cv = cross_validate(
 # # train, test = datasets.IMDB.splits(TEXT, LABEL)
 #
 # # build the vocabulary
-# keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format('/Users/gregwalsh/Downloads')
+# keyed_vectors = gensim.checkpoint.KeyedVectors.load_word2vec_format('/Users/gregwalsh/Downloads')
 # vectors = torch.FloatTensor(keyed_vectors.vectors)
 # # TEXT.build_vocab(train, vectors=vectors)
 # # LABEL.build_vocab(train)
@@ -259,7 +263,7 @@ cv = cross_validate(
 # text_field.build_vocab(dataset)
 #
 # # I use embeddings created with
-# # model = gensim.models.Word2Vec(...)
+# # model = gensim.checkpoint.Word2Vec(...)
 # # model.wv.save_word2vec_format(path_to_embeddings_file)
 #
 # # load embeddings using torchtext
@@ -271,7 +275,7 @@ cv = cross_validate(
 #
 #
 # # GET EMBEDDING VECTORS
-# keyed_vectors = gensim.models.KeyedVectors.load_word2vec_format('/Users/gregwalsh/Downloads')
+# keyed_vectors = gensim.checkpoint.KeyedVectors.load_word2vec_format('/Users/gregwalsh/Downloads')
 # # weights = torch.FloatTensor(keyed_vectors.vectors)
 #
 # # PARSE THE DATA

@@ -15,7 +15,7 @@ REPORTING_KEYS = ['run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hy
 
 # PARSE ARGS
 # ======================================================================================================================
-parser = ArgumentParser(description='Train and evaluate bunch of models')
+parser = ArgumentParser(description='Train and evaluate bunch of checkpoint')
 parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-H', '--num_hyp_samples', type=int, default=0,
@@ -31,7 +31,7 @@ parser.add_argument('-D', '--num_dispatch', type=int, default=None,
 parser.add_argument('-R', '--num_rows', type=int, default=None,
                     help='The number of rows or fraction in interval [0,1] to use in training')
 parser.add_argument('-T', '--report_n', type=int, default=None,
-                    help='The number of models on which to report training performance')
+                    help='The number of checkpoint on which to report training performance')
 args = parser.parse_args()
 
 

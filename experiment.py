@@ -1,9 +1,9 @@
 from time import time
 from util import process_cv_results, save_cv_results
 
-REPORTING_KEYS = ('run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hyp_samples',
+REPORTING_KEYS = ['run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hyp_samples',
                   'rank_test_score', 'mean_test_score', 'std_test_score', 'min_score',
-                  'max_score', 'mean_fit_time', 'params')
+                  'max_score', 'mean_fit_time', 'params']
 
 
 class Experiment:
@@ -46,17 +46,16 @@ class Experiment:
                 run_id=run_time,
                 hypothesis_name=hypothesis_name,
                 cv_results=hyper_searcher.cv_results_,
-                cv_folds=hypothesis.hyper_searcher.cv.folds,
-                cv_repeats=hypothesis.hyper_searcher.cv.repeats,
+                cv_folds=hypothesis.hyper_searcher.cv.get_n_splits(),
+                cv_repeats=hypothesis.hyper_searcher.cv.n_repeats,
                 num_hyp_samples=num_hyper_samples
             )
             save_cv_results(
-                path='{d}/results/results.csv'.format(d=directory),
+                path='{d}/results/{h}_results.csv'.format(d=directory, h=hypothesis_name),
                 processed_cv_results=hypothesis.cv_results,
                 top_n=report_limit,
                 reporting_keys=cv_reporting_keys
             )
-            hypothesis.save(
+            hypothesis.save_best_model(
                 path='{d}/saved_hypotheses/{h}_{r}.dump'.format(d=directory, r=run_time, h=hypothesis_name)
             )
-            # TODO: PRINT RESULTS FOR TOP ARGS.REPORT_N MODELS

@@ -10,7 +10,7 @@ from util import print_title, load_yaml_config
 
 
 # PARSE ARGUMENTS
-parser = ArgumentParser(description='Train and evaluate bunch of models')
+parser = ArgumentParser(description='Train and evaluate bunch of checkpoint')
 parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-J', '--num_jobs', type=int, default=-1,

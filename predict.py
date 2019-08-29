@@ -8,7 +8,7 @@ from util import print_title, load_yaml_config
 
 # PARSE ARGS
 # ======================================================================================================================
-parser = ArgumentParser(description='Train and evaluate bunch of models')
+parser = ArgumentParser(description='Train and evaluate bunch of checkpoint')
 parser.add_argument('-c', '--challenge', type=str, default='titanic',
                     help='Name of challenge folder')
 parser.add_argument('-r', '--run_id', type=str, default='lgb_1563476819',

@@ -1,6 +1,6 @@
 import numpy as np
 import skorch
-import skorchlogit
+import skorchextend
 import torch
 import torch.nn as nn
 
@@ -14,12 +14,15 @@ from skorch.dataset import CVSplit
 from sklearn.base import clone as clone_estimator
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
 
 def load_hypothesis(path):
     return load(path)
+
+
+def prefix_kwargs(kwargs, prefix):
+    return {"{}__".format(prefix) + k: v for k, v in kwargs.items()} if kwargs else {}
 
 
 def get_feature_count(dataset, pipeline):
@@ -53,8 +56,8 @@ class AbstractHypothesis(ABC):
         steps.append(('estimator', self._estimator))
         return Pipeline(steps=steps)
 
-    def save(self, path):
-        dump(self, path)
+    def save_best_model(self, path):
+        dump(self.best_model, path)
 
     @abstractmethod
     def preprocess(self, x_train, x_test, y_train):
@@ -201,41 +204,22 @@ class AbstractLightGBMClassifierHypothesis(AbstractHypothesis, ABC):
 
 class AbstractNNHypothesis(AbstractHypothesis, ABC):
 
-    def __init__(self, mode, module, device, hyper_search_strat, hyper_search_kwargs, val_fraction=0.2,
-                 patience=3, module_kwargs=None, iter_train_kwargs=None, iter_valid_kwargs=None,
+    def __init__(self, mode, hyper_search_strat, hyper_search_kwargs, estimator_kwargs,
                  transformer=None, additional_hyper_dists=None):
 
         if mode == 'classification':
-            estimator_class = skorchlogit.LogitNeuralNetClassifier
+            estimator_class = skorchextend.LogitNeuralNetClassifier
             criterion = nn.CrossEntropyLoss
         elif mode == 'regression':
             estimator_class = skorch.NeuralNetRegressor
             criterion = nn.MSELoss
         else:
             raise ValueError('"mode" must be one of {"classification", "regression"}')
-        early_stopping = skorch.callbacks.EarlyStopping(
-            monitor='valid_loss',
-            patience=patience,
-            threshold=0.001,
-            threshold_mode='rel',
-            lower_is_better=True,
-        )
-        module_kwargs = {"module__" + k: v for k, v in module_kwargs.items()} if module_kwargs else {}
-        iter_train_kwargs = {"iterator_train__" + k: v for k, v in iter_train_kwargs.items()} if iter_train_kwargs else {}
-        iter_valid_kwargs = {"iterator_valid__" + k: v for k, v in iter_valid_kwargs.items()} if iter_valid_kwargs else {}
 
         estimator = estimator_class(
-            module=module,
-            device=device,
-            callbacks=[('early_stopping', early_stopping)],
             criterion=criterion,
-            optimizer=torch.optim.Adam,
-            train_split=skorch.dataset.CVSplit(cv=val_fraction, stratified=True),
             verbose=1,
-            max_epochs=1,
-            **iter_train_kwargs,
-            **iter_valid_kwargs,
-            **module_kwargs,
+            **estimator_kwargs
         )
 
         super().__init__(
@@ -253,6 +237,3 @@ class AbstractNNHypothesis(AbstractHypothesis, ABC):
     def is_ensemble_model(self):
         # NN are a single model
         return False
-
-    def _basic_hyper_dists(self):
-        return {}

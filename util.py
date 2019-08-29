@@ -122,7 +122,7 @@ def process_cv_results(run_id, hypothesis_name, cv_results, cv_folds, cv_repeats
 
 def save_cv_results(path, processed_cv_results, reporting_keys, top_n=None):
     with open(file=path, mode='a') as f:
-        processed_cv_results[reporting_keys].iloc[0:top_n].to_csv(path_or_buf=f, index=False, header=False)
+        processed_cv_results[reporting_keys].iloc[0:top_n].to_csv(path_or_buf=f, index=False, header=f.tell() == 0)
     return
 
 

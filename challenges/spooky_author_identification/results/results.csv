@@ -1,0 +1,2 @@
+run_id,hypothesis_name,cv_folds,cv_repeats,num_hyp_samples,rank_test_score,mean_test_score,std_test_score,min_score,max_score,mean_fit_time,params
+1567017024,rnn,2,1,0,1,-1.0911610089202026,0.0002446739808497561,-1.0914056985226952,-1.0909163505599984,39.07992243766785,{}
