@@ -1,3 +1,4 @@
+import functools
 import collections
 import yaml
 import pandas as pd

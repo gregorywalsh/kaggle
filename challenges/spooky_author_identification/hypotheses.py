@@ -1,13 +1,14 @@
+import hypothesis
 import nets
 import skorch
 import skorchextend
 import torch
 import torch.nn as nn
 
-import hypothesis
+from distributions import loguniform, randomnewinstance
+from functools import partial
 from skorch.dataset import CVSplit as Split
 from scipy.stats import uniform, binom, randint
-
 
 checkpoint = skorch.callbacks.Checkpoint(
     monitor='valid_loss_best',
@@ -22,7 +23,7 @@ estimator_kwargs = {
         ('early_stopping', skorchextend.EarlyStoppingWithLoadBest(
             checkpoint=checkpoint,
             monitor='valid_loss',
-            patience=1,
+            patience=2,
             threshold=0.001,
             threshold_mode='rel',
             lower_is_better=True,
@@ -95,7 +96,6 @@ class RNNHypothesis(hypothesis.AbstractNNHypothesis):
                 **hypothesis.prefix_kwargs(iter_valid_kwargs, 'iterator_valid')
             },
             transformer=None,
-            additional_hyper_dists=self._basic_hyper_dists(),
         )
 
     def preprocess(self, x_train, x_test, y_train):
@@ -114,8 +114,12 @@ class RNNHypothesis(hypothesis.AbstractNNHypothesis):
 
     def _basic_hyper_dists(self):
         dist = {
-            'lr': hypothesis.loguniform(a=0.01, b=0.0001, base=10),
-            'embedding': [self.embeddings, *[torch.randn([self.embeddings.shape[0], n]) for n in range(10, 200, 10)]],
+            'optimizer__lr': loguniform(a=0.0001, b=0.01, base=10),
+            'iterator_train__batch_size': [16, 32, 64, 128, 256, 512],
+            'module__embeddings': randomnewinstance(
+                partial(torch.clone, self.embeddings),
+                *[partial(torch.randn, self.embeddings.shape[0], n) for n in [8, 16, 32, 64]]
+            ),
             'freeze_embedding': [True, False],
             'bidirectional': [True, False],
             'recurrent_depth': randint(1, 4),
@@ -150,7 +154,6 @@ class MeanEmbeddingHypothesis(hypothesis.AbstractNNHypothesis):
                 **hypothesis.prefix_kwargs(iter_valid_kwargs, 'iterator_valid')
             },
             transformer=None,
-            additional_hyper_dists=self._basic_hyper_dists(),
         )
 
     def preprocess(self, x_train, x_test, y_train):
@@ -169,11 +172,15 @@ class MeanEmbeddingHypothesis(hypothesis.AbstractNNHypothesis):
 
     def _basic_hyper_dists(self):
         dist = {
-            'lr': hypothesis.loguniform(a=0.01, b=0.0001, base=10),
-            'embedding': [self.embeddings, *[torch.randn([self.embeddings.shape[0], n]) for n in range(10, 50, 10)]],
-            'freeze_embedding': [True, False],
-            'fc_hidden_features': [64, 128, 256, 512],
-            'fc_hidden_depth': [0, 1, 2],
-            'dropout': uniform(),
+            'optimizer__lr': loguniform(a=0.0001, b=0.01, base=10),
+            'iterator_train__batch_size': [16, 32, 64, 128, 256, 512],
+            'module__embeddings': randomnewinstance(
+                partial(torch.clone, self.embeddings),
+                *[partial(torch.randn, self.embeddings.shape[0], n) for n in [8, 16, 32, 64]]
+            ),
+            'module__freeze_embedding': [True, False],
+            'module__fc_hidden_features': [32, 64, 128, 256, 512],
+            'module__fc_hidden_depth': [0, 1, 2],
+            'module__dropout': uniform(),
         }
-        return dist
+        return hypothesis.prefix_kwargs(kwargs=dist, prefix='estimator')

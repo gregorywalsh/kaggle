@@ -1,4 +1,5 @@
 import numpy as np
+from random import choice
 from scipy.stats import uniform
 
 
@@ -14,3 +15,11 @@ class loguniform:
             return np.power(self.base, uniform_dist.rvs(random_state=random_state))
         else:
             return np.power(self.base, uniform_dist.rvs(size=size, random_state=random_state))
+
+
+class randomnewinstance:
+    def __init__(self, *partials):
+        self.partials = partials
+
+    def rvs(self, size=None, random_state=None):
+        return choice(seq=self.partials)()

@@ -19,6 +19,7 @@ TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
 # VARIABLES
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 process_data = False
+num_hyper_samples = 10
 cv_splits = 5
 cv_repeats = 1
 
@@ -111,6 +112,7 @@ hypotheses = [
     )),
 ]
 
+print("The keys are:", hypotheses[0][1].model.get_params().keys(), '\n')
 
 # BUILD AND RUN EXPERIMENT
 experiment = Experiment(
@@ -120,7 +122,7 @@ experiment = Experiment(
     hypotheses=hypotheses
 )
 experiment.run(
-    num_hyper_samples=0,
+    num_hyper_samples=num_hyper_samples,
     directory=DIR
 )
 

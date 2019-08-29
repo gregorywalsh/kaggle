@@ -1,14 +1,17 @@
 import torch
 import torch.nn as nn
 
-
 class MLP(nn.Module):
 
     def __init__(self, in_features, hidden_features, hidden_depth, out_features, dropout, batch_norm):
         super().__init__()
         hidden_layers = []
         for i in range(hidden_depth):
-            layer = [nn.Linear(in_features=in_features if i == 0 else hidden_features, out_features=hidden_features)]
+            layer = []
+            if i == 0:
+                layer.append(nn.Linear(in_features=in_features, out_features=hidden_features))
+            else:
+                layer.append(nn.Linear(in_features=hidden_features, out_features=hidden_features))
             layer.append(nn.ReLU())
             if batch_norm:
                 layer.append(nn.BatchNorm1d(hidden_features))
@@ -70,7 +73,7 @@ class FastText(nn.Module):
     def __init__(self, embeddings, freeze_embedding, fc_hidden_features, fc_hidden_depth, out_features, dropout=0.5,
                  batch_norm=True):
         super().__init__()
-        self.embedding = nn.EmbeddingBag.from_pretrained(embeddings=embeddings, freeze=freeze_embedding, mode='mean')
+        self.embedding = nn.EmbeddingBag.from_pretrained(embeddings=embeddings, freeze=freeze_embedding)
         self.batch_norm = nn.BatchNorm1d(num_features=embeddings.shape[1])
         self.out = MLP(
             in_features=embeddings.shape[1],
