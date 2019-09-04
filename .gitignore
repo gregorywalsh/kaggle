@@ -1,4 +1,5 @@
 .idea/
+misc/tutorials/*
 challenges/*/checkpoint/*
 challenges/*/data/*
 challenges/*/predictions/*
