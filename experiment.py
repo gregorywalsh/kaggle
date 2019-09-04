@@ -9,7 +9,7 @@ REPORTING_KEYS = ['run_id', 'hypothesis_name', 'cv_folds', 'cv_repeats', 'num_hy
 class Experiment:
     """
     Define an experiment and run it to evaluate one or more
-    hypotheses, record performance and return the
+    saved_hypotheses, record performance and return the
     best performing machine from each hypothesis
     """
 

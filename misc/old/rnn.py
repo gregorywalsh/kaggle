@@ -8,13 +8,10 @@ import torch
 import torch.nn as nn
 
 from datareader import DataReader
-from sklearn.metrics import make_scorer, log_loss
-from sklearn.model_selection import cross_validate, train_test_split
 from sklearn.base import clone
 from skorch.helper import predefined_split
 from skorch.dataset import Dataset
 from scipy.special import softmax
-from temperature_scaling import ModelWithTemperature
 from torch.utils.data import DataLoader
 
 

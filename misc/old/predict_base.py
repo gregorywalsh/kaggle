@@ -2,10 +2,8 @@ import numpy as np
 import importlib
 from time import time
 from argparse import ArgumentParser
-from dataset import Dataset
+from misc.old.dataset import Dataset
 from sklearn.model_selection import RepeatedStratifiedKFold, cross_val_score
-from sklearn.ensemble import VotingClassifier
-from itertools import repeat
 from util import print_title, load_yaml_config
 
 

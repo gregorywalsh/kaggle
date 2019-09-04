@@ -1,3 +1,6 @@
-data/*
-!data/config.yml
-hypotheses/*
+challenges/*/checkpoint/*
+challenges/*/data/*
+challenges/*/predictions/*
+challenges/*/saved_hypotheses/*
+!**/config.yml
+!**/.gitkeep

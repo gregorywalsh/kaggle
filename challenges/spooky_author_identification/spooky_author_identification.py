@@ -18,7 +18,7 @@ TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
 
 # VARIABLES
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-process_data = False
+process_data = True
 num_hyper_samples = 10
 cv_splits = 5
 cv_repeats = 1

@@ -20,7 +20,7 @@ class FBetaLoss(nn.Module):
         fbeta = fbeta.clamp(min=self.epsilon, max=1 - self.epsilon)
         return 1 - fbeta.mean()
 
-    def forward2(self, y_logits, y_true):
+    def forward_other(self, y_logits, y_true):
         y_pred = self.sigmoid(y_logits)
         TP = (y_pred * y_true).sum(dim=1)
         FP = ((1 - y_pred) * y_true).sum(dim=1)
@@ -28,3 +28,5 @@ class FBetaLoss(nn.Module):
         fbeta = (1 + self.beta**2) * TP / ((1 + self.beta**2) * TP + (self.beta**2) * FN + FP + self.epsilon)
         fbeta = fbeta.clamp(min=self.epsilon, max=1 - self.epsilon)
         return 1 - fbeta.mean()
+
+# TODO: Write some unit tests for these functions

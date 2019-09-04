@@ -1,6 +1,6 @@
 import importlib
 from argparse import ArgumentParser
-from dataset import Dataset
+from misc.old.dataset import Dataset
 from hypothesis import load_hypothesis
 from util import print_title, load_yaml_config
 from sklearn.model_selection import cross_val_score, RepeatedStratifiedKFold
