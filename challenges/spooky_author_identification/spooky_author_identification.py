@@ -1,5 +1,4 @@
 import challenges.spooky_author_identification.hypotheses as hyps
-import gensim
 import pandas as pd
 import pickle
 import re
@@ -7,6 +6,7 @@ import torch
 
 from datareader import DataReader
 from experiment import Experiment
+from gensim.models import KeyedVectors
 from operator import itemgetter
 from sklearn.model_selection import RandomizedSearchCV, RepeatedStratifiedKFold
 
@@ -18,7 +18,7 @@ TARGET_COLUMNS = ["EAP", "HPL", "MWS"]
 
 # VARIABLES
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-process_data = True
+process_data = False
 num_hyper_samples = 10
 cv_splits = 5
 cv_repeats = 1
@@ -44,7 +44,7 @@ if process_data:
     # EMBEDDED EXPERIMENTS
     #   Load embedding vectors
     filename = '/Users/gregwalsh/Downloads/GoogleNews-vectors-negative300.bin'
-    keyed_vectors = gensim.checkpoint.KeyedVectors.load_word2vec_format(fname=filename, binary=True)
+    keyed_vectors = KeyedVectors.load_word2vec_format(fname=filename, binary=True)
 
     #   Combine dataframes
     df_all = pd.concat(objs=[df_train, df_test], axis=0, keys=['train', 'test'], sort=True)
